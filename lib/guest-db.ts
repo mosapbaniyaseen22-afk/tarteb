@@ -1,0 +1,271 @@
+import type {
+  AiConversation,
+  Note,
+  Profile,
+  QuranProgress,
+  ScheduleEntry,
+  StudySession,
+  QuizAttempt,
+  Task,
+  UserSubject,
+} from './supabase';
+
+export const PROFILE_STORAGE_KEY = 'labib-profile';
+export const SUBJECTS_STORAGE_KEY = 'labib-user-subjects';
+const TASKS_KEY = 'labib-tasks';
+const NOTES_KEY = 'labib-notes';
+const BOOKMARKS_KEY = 'labib-bookmarks';
+const QURAN_KEY = 'labib-quran';
+const SCHEDULE_KEY = 'labib-schedule';
+const AI_KEY = 'labib-ai';
+const SESSIONS_KEY = 'labib-sessions';
+const QUIZ_KEY = 'labib-quiz-attempts';
+
+const ALL_KEYS = [
+  PROFILE_STORAGE_KEY,
+  SUBJECTS_STORAGE_KEY,
+  TASKS_KEY,
+  NOTES_KEY,
+  BOOKMARKS_KEY,
+  QURAN_KEY,
+  SCHEDULE_KEY,
+  AI_KEY,
+  SESSIONS_KEY,
+  QUIZ_KEY,
+];
+
+const SUBJECT_META: Record<string, { id: string; color: string; name: string }> = {
+  الرياضيات: { id: 'math', color: '#2563EB', name: 'Mathematics' },
+  'اللغة العربية': { id: 'arabic', color: '#F59E0B', name: 'Arabic' },
+  'التربية الإسلامية': { id: 'islamic', color: '#059669', name: 'Islamic Education' },
+  'تاريخ الأردن': { id: 'jordan-history', color: '#D97706', name: 'Jordan History' },
+  أحياء: { id: 'biology', color: '#0EA5E9', name: 'Biology' },
+  كيمياء: { id: 'chemistry', color: '#14B8A6', name: 'Chemistry' },
+  فيزياء: { id: 'physics', color: '#8B5CF6', name: 'Physics' },
+  'إنجليزي متقدم': { id: 'english-adv', color: '#6366F1', name: 'Advanced English' },
+  'علوم أرض': { id: 'earth', color: '#78716C', name: 'Earth Science' },
+  'رياضيات أعمال': { id: 'business-math', color: '#0891B2', name: 'Business Math' },
+  'ثقافة مالية': { id: 'finance', color: '#0D9488', name: 'Financial Literacy' },
+  'علم الاجتماع': { id: 'sociology', color: '#DB2777', name: 'Sociology' },
+  'علم النفس': { id: 'psychology', color: '#EC4899', name: 'Psychology' },
+  فلسفة: { id: 'philosophy', color: '#A855F7', name: 'Philosophy' },
+  الفلسفة: { id: 'philosophy', color: '#A855F7', name: 'Philosophy' },
+  تاريخ: { id: 'history', color: '#B45309', name: 'History' },
+  جغرافيا: { id: 'geography', color: '#65A30D', name: 'Geography' },
+  'دين تخصص': { id: 'islamic-adv', color: '#047857', name: 'Islamic Studies' },
+  'عربي تخصص': { id: 'arabic-adv', color: '#C2410C', name: 'Advanced Arabic' },
+};
+
+const FALLBACK_COLORS = ['#2563EB', '#14B8A6', '#F59E0B', '#8B5CF6', '#0EA5E9', '#22C55E'];
+
+export type Bookmark = {
+  id: string;
+  user_id: string;
+  subject_id: string;
+  title: string;
+  content_type: string;
+  created_at: string;
+};
+
+function readJson<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson<T>(key: string, value: T) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+export function newId(prefix: string) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function clearGuestData() {
+  if (typeof window === 'undefined') return;
+  ALL_KEYS.forEach((key) => window.localStorage.removeItem(key));
+}
+
+export function buildUserSubjects(
+  names: string[],
+  userId: string,
+  stage: string | null,
+  field: string | null,
+): UserSubject[] {
+  return names.map((name, index) => {
+    const meta = SUBJECT_META[name] ?? {
+      id: `sub_${index}_${name.length}`,
+      color: FALLBACK_COLORS[index % FALLBACK_COLORS.length],
+      name,
+    };
+    return {
+      id: `us_${meta.id}`,
+      user_id: userId,
+      subject_id: meta.id,
+      progress: 0,
+      subjects: {
+        id: meta.id,
+        name: meta.name,
+        name_ar: name,
+        stage,
+        field,
+        color: meta.color,
+        icon: 'BookOpen',
+      },
+    };
+  });
+}
+
+export const guestStore = {
+  getProfile(): Profile | null {
+    return readJson<Profile | null>(PROFILE_STORAGE_KEY, null);
+  },
+  setProfile(profile: Profile) {
+    writeJson(PROFILE_STORAGE_KEY, profile);
+  },
+
+  getSubjects(): UserSubject[] {
+    return readJson<UserSubject[]>(SUBJECTS_STORAGE_KEY, []);
+  },
+  setSubjects(subjects: UserSubject[]) {
+    writeJson(SUBJECTS_STORAGE_KEY, subjects);
+  },
+  findSubject(subjectId: string) {
+    return this.getSubjects().find((item) => item.subject_id === subjectId) ?? null;
+  },
+
+  getTasks(): Task[] {
+    return readJson<Task[]>(TASKS_KEY, []);
+  },
+  setTasks(tasks: Task[]) {
+    writeJson(TASKS_KEY, tasks);
+  },
+  addTask(task: Omit<Task, 'id' | 'created_at'>): Task {
+    const next: Task = {
+      ...task,
+      id: newId('task'),
+      created_at: new Date().toISOString(),
+    };
+    this.setTasks([...this.getTasks(), next]);
+    return next;
+  },
+  updateTask(id: string, patch: Partial<Task>) {
+    this.setTasks(this.getTasks().map((task) => (task.id === id ? { ...task, ...patch } : task)));
+  },
+  deleteTask(id: string) {
+    this.setTasks(this.getTasks().filter((task) => task.id !== id));
+  },
+
+  getNotes(subjectId: string): Note[] {
+    return readJson<Note[]>(NOTES_KEY, [])
+      .filter((note) => note.subject_id === subjectId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  addNote(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>): Note {
+    const now = new Date().toISOString();
+    const next: Note = { ...note, id: newId('note'), created_at: now, updated_at: now };
+    writeJson(NOTES_KEY, [next, ...readJson<Note[]>(NOTES_KEY, [])]);
+    return next;
+  },
+  deleteNote(id: string) {
+    writeJson(NOTES_KEY, readJson<Note[]>(NOTES_KEY, []).filter((note) => note.id !== id));
+  },
+
+  getBookmarks(subjectId: string): Bookmark[] {
+    return readJson<Bookmark[]>(BOOKMARKS_KEY, [])
+      .filter((item) => item.subject_id === subjectId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  addBookmark(bookmark: Omit<Bookmark, 'id' | 'created_at'>): Bookmark {
+    const next: Bookmark = { ...bookmark, id: newId('bm'), created_at: new Date().toISOString() };
+    writeJson(BOOKMARKS_KEY, [next, ...readJson<Bookmark[]>(BOOKMARKS_KEY, [])]);
+    return next;
+  },
+  deleteBookmark(id: string) {
+    writeJson(BOOKMARKS_KEY, readJson<Bookmark[]>(BOOKMARKS_KEY, []).filter((item) => item.id !== id));
+  },
+
+  getQuran(): QuranProgress[] {
+    return readJson<QuranProgress[]>(QURAN_KEY, []).sort((a, b) =>
+      b.progress_date.localeCompare(a.progress_date),
+    );
+  },
+  upsertQuran(entry: QuranProgress) {
+    const rows = this.getQuran();
+    const index = rows.findIndex((item) => item.id === entry.id);
+    if (index >= 0) rows[index] = entry;
+    else rows.unshift(entry);
+    writeJson(QURAN_KEY, rows);
+  },
+
+  getSchedule(date: string): ScheduleEntry[] {
+    return readJson<ScheduleEntry[]>(SCHEDULE_KEY, [])
+      .filter((item) => item.schedule_date === date)
+      .sort((a, b) => a.start_time.localeCompare(b.start_time));
+  },
+  replaceSchedule(date: string, entries: ScheduleEntry[]) {
+    const others = readJson<ScheduleEntry[]>(SCHEDULE_KEY, []).filter((item) => item.schedule_date !== date);
+    writeJson(SCHEDULE_KEY, [...others, ...entries]);
+  },
+  addScheduleEntry(entry: Omit<ScheduleEntry, 'id'>): ScheduleEntry {
+    const next: ScheduleEntry = { ...entry, id: newId('sched') };
+    const rows = readJson<ScheduleEntry[]>(SCHEDULE_KEY, []);
+    writeJson(SCHEDULE_KEY, [...rows, next]);
+    return next;
+  },
+  updateScheduleEntry(id: string, patch: Partial<ScheduleEntry>): ScheduleEntry | null {
+    const rows = readJson<ScheduleEntry[]>(SCHEDULE_KEY, []);
+    const next = rows.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    writeJson(SCHEDULE_KEY, next);
+    return next.find((item) => item.id === id) ?? null;
+  },
+  getScheduleRange(start: string, end: string): ScheduleEntry[] {
+    return readJson<ScheduleEntry[]>(SCHEDULE_KEY, []).filter(
+      (item) => item.schedule_date >= start && item.schedule_date <= end,
+    );
+  },
+  deleteScheduleEntry(id: string) {
+    writeJson(
+      SCHEDULE_KEY,
+      readJson<ScheduleEntry[]>(SCHEDULE_KEY, []).filter((item) => item.id !== id),
+    );
+  },
+
+  getAiMessages(): AiConversation[] {
+    return readJson<AiConversation[]>(AI_KEY, []);
+  },
+  addAiMessage(message: Omit<AiConversation, 'id' | 'created_at'>): AiConversation {
+    const next: AiConversation = {
+      ...message,
+      id: newId('ai'),
+      created_at: new Date().toISOString(),
+    };
+    writeJson(AI_KEY, [...this.getAiMessages(), next]);
+    return next;
+  },
+
+  getSessions(): StudySession[] {
+    return readJson<StudySession[]>(SESSIONS_KEY, []);
+  },
+
+  getQuizAttempts(): QuizAttempt[] {
+    return readJson<QuizAttempt[]>(QUIZ_KEY, []).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  setQuizAttempts(attempts: QuizAttempt[]) {
+    writeJson(QUIZ_KEY, attempts);
+  },
+  addQuizAttempt(attempt: Omit<QuizAttempt, 'id' | 'created_at'>): QuizAttempt {
+    const next: QuizAttempt = {
+      ...attempt,
+      id: newId('quiz'),
+      created_at: new Date().toISOString(),
+    };
+    this.setQuizAttempts([next, ...this.getQuizAttempts()]);
+    return next;
+  },
+};

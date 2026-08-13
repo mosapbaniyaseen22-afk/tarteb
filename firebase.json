@@ -1,0 +1,12 @@
+{
+  "auth": {
+    "providers": {
+      "anonymous": false,
+      "emailPassword": false,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Labib",
+        "supportEmail": "raghadhussien601@gmail.com"
+      }
+    }
+  }
+}
