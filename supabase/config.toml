@@ -10,6 +10,10 @@ additional_redirect_urls = [
   "http://localhost:3000/auth/callback"
 ]
 
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
 [auth.external.google]
 enabled = true
 client_id = "2853621329-5b73b1it8slebgt5e9io945l5g6v417u.apps.googleusercontent.com"

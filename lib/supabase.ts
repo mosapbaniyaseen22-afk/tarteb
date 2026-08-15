@@ -262,7 +262,7 @@ function createLocalSupabase() {
         updated_at: new Date().toISOString(),
       });
       createSession(user);
-      return { data: { user }, error: null };
+      return { data: { user, session: currentSession }, error: null };
     },
     signInWithPassword: async ({ email }: any) => {
       const user = localDatabase.users.find((u: any) => u.email === email) ?? demoUser;

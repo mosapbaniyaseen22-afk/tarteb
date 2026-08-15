@@ -12,21 +12,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LabibLogo } from '@/components/labib-logo';
 import {
-  ADMIN_EMAIL,
   ADMIN_RESOURCE_TYPES,
   ADMIN_SUBJECT_OPTIONS,
-  activateAdminSession,
   adminFileUrl,
-  adminRequest,
-  isAdminEmail,
   loadAdminResources,
   isSubscriberOnline,
   type AdminResource,
   type AdminResourceType,
   type AppSubscriber,
 } from '@/lib/admin';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
 import { getStageLabel } from '@/lib/utils';
 
 const EXAM_YEARS = Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + 1 - index));
@@ -41,22 +35,13 @@ function formatSubscriberSeen(iso: string) {
   return `آخر ظهور ${new Date(iso).toLocaleDateString('ar-JO')}`;
 }
 
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-      <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.2-1.7 2.9l2.8 2.2c1.6-1.5 2.6-3.7 2.6-6.3 0-.6-.1-1.2-.2-1.8H12z" />
-      <path fill="#34A853" d="M6.6 14.4 5.5 15.3l-3.8 3C4 21.1 7.7 23 12 23c3 0 5.5-1 7.4-2.7l-2.8-2.2c-.8.5-1.9.9-3.1.9-2.4 0-4.5-1.6-5.2-3.8z" />
-      <path fill="#4A90E2" d="M2.2 7.7C1.4 9.3 1 11.1 1 13s.4 3.7 1.2 5.3l4.4-3.4c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9z" />
-      <path fill="#FBBC05" d="M12 5.1c1.6 0 3.1.6 4.2 1.6l3.1-3.1C17.5 1.9 15 1 12 1 7.7 1 4 2.9 2.2 7.7l4.4 3.4C7.5 6.9 9.6 5.1 12 5.1z" />
-    </svg>
-  );
-}
-
 export default function AdminPage() {
   const router = useRouter();
-  const { user, loading, profileLoaded, signingIn, signInWithGoogle, signOut } = useAuth();
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
   const [items, setItems] = useState<AdminResource[]>([]);
   const [saving, setSaving] = useState(false);
@@ -78,7 +63,7 @@ export default function AdminPage() {
 
   const refreshSubscribers = async () => {
     try {
-      const response = await adminRequest('/api/admin/subscribers', { cache: 'no-store' });
+      const response = await fetch('/api/admin/subscribers', { cache: 'no-store' });
       if (!response.ok) return;
       const payload = (await response.json()) as { subscribers?: AppSubscriber[] };
       setSubscribers(payload.subscribers ?? []);
@@ -88,43 +73,20 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    const enterAdmin = async () => {
-      setAuthenticated(true);
-      await refreshItems();
-      await refreshSubscribers();
-    };
-
     const check = async () => {
-      const response = await adminRequest('/api/admin/session', { cache: 'no-store' });
-      if (cancelled) return;
-      if (response.ok) {
-        await enterAdmin();
-        if (!cancelled) setChecking(false);
-        return;
-      }
-
-      if (loading || !profileLoaded) return;
-
-      if (isAdminEmail(user?.email)) {
-        const { data } = await supabase.auth.getSession();
-        const token = data.session?.access_token;
-        if (token) void activateAdminSession(token);
-        if (cancelled) return;
-        await enterAdmin();
+      try {
+        const response = await fetch('/api/admin/session', { cache: 'no-store' });
+        if (response.ok) {
+          setAuthenticated(true);
+          await refreshItems();
+          await refreshSubscribers();
+        }
+      } finally {
         setChecking(false);
-        return;
       }
-
-      if (!cancelled) setChecking(false);
     };
-
     void check();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, profileLoaded, user?.email]);
+  }, []);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -141,18 +103,36 @@ export default function AdminPage() {
     }));
   }, [items]);
 
-  const handleGoogleLogin = async () => {
-    window.sessionStorage.removeItem('labib-skip-auto-google');
-    await signInWithGoogle({ selectAccount: true });
+  const handleLogin = async (event: FormEvent) => {
+    event.preventDefault();
+    setLoggingIn(true);
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        toast.error(payload.error || 'تعذر تسجيل الدخول');
+        return;
+      }
+      setAuthenticated(true);
+      setPassword('');
+      await refreshItems();
+      await refreshSubscribers();
+      toast.success('تم الدخول إلى لوحة الأدمن');
+    } catch {
+      toast.error('تعذر الاتصال بالخادم');
+    } finally {
+      setLoggingIn(false);
+    }
   };
 
   const handleLogout = async () => {
-    await adminRequest('/api/admin/logout', { method: 'POST' });
-    window.sessionStorage.setItem('labib-skip-auto-google', '1');
-    await signOut();
+    await fetch('/api/admin/logout', { method: 'POST' });
     setAuthenticated(false);
     toast.success('تم تسجيل الخروج');
-    router.replace('/');
   };
 
   const resetForm = () => {
@@ -185,7 +165,7 @@ export default function AdminPage() {
       form.set('externalUrl', externalUrl.trim());
       if (file) form.set('file', file);
 
-      const response = await adminRequest('/api/admin/resources', { method: 'POST', body: form });
+      const response = await fetch('/api/admin/resources', { method: 'POST', body: form });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
         toast.error(payload.error || 'تعذر رفع المحتوى');
@@ -202,7 +182,7 @@ export default function AdminPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const response = await adminRequest(`/api/admin/resources/${id}`, { method: 'DELETE' });
+    const response = await fetch(`/api/admin/resources/${id}`, { method: 'DELETE' });
     if (!response.ok) {
       toast.error('تعذر حذف العنصر');
       return;
@@ -222,7 +202,7 @@ export default function AdminPage() {
     try {
       const form = new FormData();
       for (const item of allowed) form.append('file', item);
-      const response = await adminRequest('/api/admin/ingest', { method: 'POST', body: form });
+      const response = await fetch('/api/admin/ingest', { method: 'POST', body: form });
       const payload = (await response.json()) as {
         error?: string;
         items?: Array<{ summary: string; scannedLikely: boolean; item: { title: string } }>;
@@ -268,33 +248,35 @@ export default function AdminPage() {
               <p className="text-sm text-muted-foreground">لوحة إدارة محتوى لبيب</p>
             </div>
           </div>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              الدخول متاح فقط لحساب جوجل الأدمن
-              <span className="mt-1 block font-medium text-foreground">{ADMIN_EMAIL}</span>
-            </p>
-            {user && !isAdminEmail(user.email) && (
-              <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                الحساب الحالي ليس حساب الأدمن. اختر {ADMIN_EMAIL} من نافذة جوجل.
-              </p>
-            )}
-            <Button
-              type="button"
-              disabled={signingIn}
-              onClick={() => void handleGoogleLogin()}
-              className="h-12 w-full rounded-2xl gradient-primary"
-            >
-              {signingIn ? '...جاري تسجيل الدخول' : (
-                <span className="flex items-center justify-center gap-2">
-                  <GoogleIcon />
-                  دخول بجوجل
-                </span>
-              )}
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <Label className="mb-2 block">اسم المستخدم</Label>
+              <Input
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="ahmad"
+                className="rounded-xl"
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <Label className="mb-2 block">كلمة السر</Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="••••••••"
+                className="rounded-xl"
+                autoComplete="current-password"
+              />
+            </div>
+            <Button type="submit" disabled={loggingIn} className="h-12 w-full rounded-2xl gradient-primary">
+              {loggingIn ? 'جاري الدخول...' : 'دخول'}
             </Button>
             <Button type="button" variant="ghost" className="w-full rounded-xl" onClick={() => router.push('/')}>
               العودة للمنصة
             </Button>
-          </div>
+          </form>
         </Card>
       </div>
     );
@@ -308,7 +290,7 @@ export default function AdminPage() {
             <LabibLogo size="md" />
             <div>
               <div className="font-bold">لوحة أدمن لبيب</div>
-              <div className="text-xs text-muted-foreground">{ADMIN_EMAIL}</div>
+              <div className="text-xs text-muted-foreground">نشر المواد والامتحانات للطلاب</div>
             </div>
           </div>
           <Button variant="ghost" className="rounded-xl text-destructive hover:bg-destructive/10" onClick={handleLogout}>

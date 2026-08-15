@@ -1,55 +1,23 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { BookOpen, Brain, Clock, CircleHelp, Trophy, Moon, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isReturningStudent, useAuth } from '@/lib/auth-context';
-import { isAdminEmail } from '@/lib/admin';
 import { LabibLogo } from '@/components/labib-logo';
-
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-      <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.2-1.7 2.9l2.8 2.2c1.6-1.5 2.6-3.7 2.6-6.3 0-.6-.1-1.2-.2-1.8H12z" />
-      <path fill="#34A853" d="M6.6 14.4 5.5 15.3l-3.8 3C4 21.1 7.7 23 12 23c3 0 5.5-1 7.4-2.7l-2.8-2.2c-.8.5-1.9.9-3.1.9-2.4 0-4.5-1.6-5.2-3.8z" />
-      <path fill="#4A90E2" d="M2.2 7.7C1.4 9.3 1 11.1 1 13s.4 3.7 1.2 5.3l4.4-3.4c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9z" />
-      <path fill="#FBBC05" d="M12 5.1c1.6 0 3.1.6 4.2 1.6l3.1-3.1C17.5 1.9 15 1 12 1 7.7 1 4 2.9 2.2 7.7l4.4 3.4C7.5 6.9 9.6 5.1 12 5.1z" />
-    </svg>
-  );
-}
 
 export default function LandingPage() {
   const router = useRouter();
-  const { user, profile, userSubjects, loading, profileLoaded, signingIn, signInWithGoogle } = useAuth();
-
-  const autoStarted = useRef(false);
+  const { user, profile, userSubjects, loading, profileLoaded, signingIn } = useAuth();
 
   useEffect(() => {
-    if (loading || !profileLoaded || autoStarted.current) return;
-    if (user) {
-      autoStarted.current = true;
-      router.replace(
-        isAdminEmail(user.email)
-          ? '/admin'
-          : isReturningStudent(profile, userSubjects)
-            ? '/dashboard'
-            : '/onboarding',
-      );
-      return;
-    }
-    if (window.sessionStorage.getItem('labib-skip-auto-google')) return;
-    autoStarted.current = true;
-    void signInWithGoogle();
-  }, [loading, profileLoaded, user, profile, userSubjects, router, signInWithGoogle]);
+    if (loading || !profileLoaded || !user) return;
+    router.replace(isReturningStudent(profile, userSubjects) ? '/dashboard' : '/onboarding');
+  }, [loading, profileLoaded, user, profile, userSubjects, router]);
 
-  const startNow = async () => {
-    window.sessionStorage.removeItem('labib-skip-auto-google');
-    if (user && isAdminEmail(user.email)) {
-      router.push('/admin');
-      return;
-    }
+  const startNow = () => {
     if (user && isReturningStudent(profile, userSubjects)) {
       router.push('/dashboard');
       return;
@@ -58,7 +26,7 @@ export default function LandingPage() {
       router.push('/onboarding');
       return;
     }
-    await signInWithGoogle();
+    router.push('/login');
   };
 
   const features = [
@@ -151,12 +119,7 @@ export default function LandingPage() {
             size="lg"
             className="h-14 w-full rounded-2xl gradient-primary px-8 text-base font-semibold shadow-glow hover:opacity-90 sm:w-auto"
           >
-            {signingIn ? '...جاري تسجيل الدخول' : user ? 'متابعة' : (
-              <span className="flex items-center gap-2">
-                <GoogleIcon />
-                ابدأ الآن بجوجل
-              </span>
-            )}
+            {signingIn ? '...جاري تسجيل الدخول' : user ? 'متابعة' : 'ابدأ الآن'}
           </Button>
 
         </motion.div>
@@ -232,7 +195,7 @@ export default function LandingPage() {
             size="lg"
             className="h-14 w-full rounded-2xl gradient-primary px-10 text-base font-semibold shadow-glow sm:w-auto"
           >
-            {signingIn ? '...جاري تسجيل الدخول' : 'ابدأ بجوجل'}
+            {signingIn ? '...جاري تسجيل الدخول' : 'ابدأ الآن'}
           </Button>
         </motion.div>
       </section>

@@ -21,6 +21,8 @@ type AuthContextType = {
   loading: boolean;
   signingIn: boolean;
   signInWithGoogle: (options?: { selectAccount?: boolean }) => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
   profileLoaded: boolean;
   refreshProfile: () => Promise<void>;
@@ -37,6 +39,26 @@ export function isReturningStudent(profile: Profile | null, subjects: UserSubjec
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function emailAuthErrorMessage(err: unknown) {
+  const message = err && typeof err === 'object' && 'message' in err
+    ? String((err as { message: string }).message)
+    : '';
+  const lower = message.toLowerCase();
+  if (lower.includes('invalid login') || lower.includes('invalid credentials')) {
+    return 'البريد أو كلمة السر غير صحيحة';
+  }
+  if (lower.includes('already registered') || lower.includes('already been registered')) {
+    return 'هذا البريد مسجّل مسبقاً، سجّل الدخول';
+  }
+  if (lower.includes('password')) {
+    return 'كلمة السر يجب أن تكون 6 أحرف على الأقل';
+  }
+  if (lower.includes('unable to validate email') || lower.includes('invalid email')) {
+    return 'أدخل بريداً إلكترونياً صحيحاً';
+  }
+  return message || 'تعذر إكمال العملية، حاول مرة أخرى';
+}
 
 function mapAuthUser(user: {
   id: string;
@@ -129,6 +151,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSigningIn(false);
       toast.error(googleAuthErrorMessage(err));
       throw err;
+    }
+  };
+
+  const signInWithEmail = async (email: string, password: string) => {
+    if (signingIn) return;
+    setSigningIn(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error) throw error;
+    } catch (err) {
+      toast.error(emailAuthErrorMessage(err));
+      throw err;
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string, fullName: string) => {
+    if (signingIn) return;
+    setSigningIn(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: { full_name: fullName.trim() || 'طالب' },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) throw error;
+      if (!data.session) {
+        toast.success('تم إنشاء الحساب. إذا طُلب تأكيد البريد، تحقق من صندوق الوارد ثم سجّل الدخول.');
+      }
+    } catch (err) {
+      toast.error(emailAuthErrorMessage(err));
+      throw err;
+    } finally {
+      setSigningIn(false);
     }
   };
 
@@ -245,6 +308,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signingIn,
         profileLoaded,
         signInWithGoogle,
+        signInWithEmail,
+        signUpWithEmail,
         signOut,
         refreshProfile,
         saveProfile,

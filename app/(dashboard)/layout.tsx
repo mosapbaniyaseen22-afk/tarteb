@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/auth-context';
-import { isAdminEmail } from '@/lib/admin';
 import { getStageLabel } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -49,13 +48,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (loading) return;
-    if (!user) {
+    if (!loading && !user) {
       router.replace('/');
-      return;
-    }
-    if (isAdminEmail(user.email)) {
-      router.replace('/admin');
     }
   }, [loading, user, router]);
 

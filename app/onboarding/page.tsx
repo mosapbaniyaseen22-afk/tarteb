@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { isReturningStudent, useAuth } from '@/lib/auth-context';
-import { isAdminEmail } from '@/lib/admin';
 import { REGIONS, STUDY_FIELDS, FIELD_SUBJECTS } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,10 +31,6 @@ export default function OnboardingPage() {
     if (loading || !profileLoaded) return;
     if (!user) {
       router.replace('/');
-      return;
-    }
-    if (isAdminEmail(user.email)) {
-      router.replace('/admin');
       return;
     }
     if (isReturningStudent(profile, userSubjects)) {
@@ -115,7 +110,7 @@ export default function OnboardingPage() {
     }
   };
 
-  if (loading || !profileLoaded || !user || isAdminEmail(user.email) || isReturningStudent(profile, userSubjects)) {
+  if (loading || !profileLoaded || !user || isReturningStudent(profile, userSubjects)) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 gradient-hero">
         <LabibLogo size="lg" />
