@@ -1,21 +1,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { isAdminEmail } from '@/lib/admin';
+import { isAdminUser } from '@/lib/admin';
 import { AUTH_COOKIE, adminCookieOptions, createAdminSession } from '@/lib/admin-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function getAccessToken(request: Request) {
+async function readAccessToken(request: Request) {
   const header = request.headers.get('authorization') ?? '';
   if (header.toLowerCase().startsWith('bearer ')) {
     return header.slice(7).trim();
   }
-  return '';
+  const body = (await request.json().catch(() => null)) as { accessToken?: string } | null;
+  return body?.accessToken?.trim() ?? '';
 }
 
 export async function POST(request: Request) {
-  const accessToken = getAccessToken(request);
+  const accessToken = await readAccessToken(request);
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   });
 
   const { data, error } = await supabase.auth.getUser(accessToken);
-  if (error || !data.user || !isAdminEmail(data.user.email)) {
+  if (error || !data.user || !isAdminUser(data.user)) {
     return NextResponse.json({ error: 'هذا الحساب ليس حساب الأدمن' }, { status: 403 });
   }
 

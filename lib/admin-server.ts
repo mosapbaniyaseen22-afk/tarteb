@@ -1,8 +1,9 @@
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import path from 'path';
-import type { AdminResource, AppSubscriber } from './admin';
+import { createClient } from '@supabase/supabase-js';
+import { isAdminUser, type AdminResource, type AppSubscriber } from './admin';
 
 const AUTH_COOKIE = 'labib_admin';
 const DEFAULT_USERNAME = 'ahmad';
@@ -117,12 +118,35 @@ export function createAdminSession(username: string) {
   return signSession(username, expiresAt);
 }
 
+async function getUserFromAccessToken(accessToken: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const { data, error } = await client.auth.getUser(accessToken);
+  if (error || !data.user) return null;
+  return data.user;
+}
+
 export async function getAdminSession() {
   const token = cookies().get(AUTH_COOKIE)?.value;
   const session = readSessionToken(token);
-  if (!session) return null;
-  if (session.username !== 'admin') return null;
-  return session;
+  if (session?.username === 'admin') return session;
+
+  const authHeader = headers().get('authorization') ?? '';
+  const bearer = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+  if (!bearer) return null;
+
+  const user = await getUserFromAccessToken(bearer);
+  if (!user || !isAdminUser(user)) return null;
+  return { username: 'admin' };
 }
 
 export async function verifyAdminLogin(username: string, password: string) {

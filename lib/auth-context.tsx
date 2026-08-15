@@ -46,7 +46,7 @@ function mapAuthUser(user: {
   const meta = user.user_metadata ?? {};
   return {
     id: user.id,
-    email: user.email ?? '',
+    email: String(user.email || meta.email || ''),
     full_name: String(meta.full_name || meta.name || user.email?.split('@')[0] || 'طالب'),
     avatar_url: (meta.avatar_url as string | undefined) || (meta.picture as string | undefined) || null,
   };

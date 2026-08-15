@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export type AdminResourceType =
   | 'material'
   | 'summary'
@@ -151,14 +153,52 @@ export function adminFileUrl(id: string) {
 
 export const ADMIN_EMAIL = 'ahmadqudomi777@gmail.com';
 
+export function emailsFromUser(user: {
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+  identities?: Array<{ identity_data?: Record<string, unknown> | null }> | null;
+} | null | undefined): string[] {
+  if (!user) return [];
+  const values = [
+    user.email,
+    user.user_metadata?.email,
+    ...(user.identities ?? []).map((item) => item.identity_data?.email),
+  ];
+  return [...new Set(
+    values
+      .map((value) => String(value ?? '').trim().toLowerCase())
+      .filter(Boolean),
+  )];
+}
+
 export function isAdminEmail(email: string | null | undefined) {
-  return (email ?? '').trim().toLowerCase() === ADMIN_EMAIL;
+  return emailsFromUser({ email }).includes(ADMIN_EMAIL);
+}
+
+export function isAdminUser(user: Parameters<typeof emailsFromUser>[0]) {
+  return emailsFromUser(user).includes(ADMIN_EMAIL);
+}
+
+async function getAccessToken() {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? '';
+}
+
+export async function adminRequest(input: string, init: RequestInit = {}) {
+  const token = await getAccessToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(input, { ...init, headers, credentials: 'include' });
 }
 
 export async function activateAdminSession(accessToken: string) {
-  const response = await fetch('/api/admin/google', {
+  const response = await adminRequest('/api/admin/google', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ accessToken }),
   });
   return response.ok;
 }

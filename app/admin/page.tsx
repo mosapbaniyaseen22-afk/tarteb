@@ -17,6 +17,7 @@ import {
   ADMIN_SUBJECT_OPTIONS,
   activateAdminSession,
   adminFileUrl,
+  adminRequest,
   isAdminEmail,
   loadAdminResources,
   isSubscriberOnline,
@@ -77,7 +78,7 @@ export default function AdminPage() {
 
   const refreshSubscribers = async () => {
     try {
-      const response = await fetch('/api/admin/subscribers', { cache: 'no-store' });
+      const response = await adminRequest('/api/admin/subscribers', { cache: 'no-store' });
       if (!response.ok) return;
       const payload = (await response.json()) as { subscribers?: AppSubscriber[] };
       setSubscribers(payload.subscribers ?? []);
@@ -96,7 +97,7 @@ export default function AdminPage() {
     };
 
     const check = async () => {
-      const response = await fetch('/api/admin/session', { cache: 'no-store' });
+      const response = await adminRequest('/api/admin/session', { cache: 'no-store' });
       if (cancelled) return;
       if (response.ok) {
         await enterAdmin();
@@ -109,15 +110,11 @@ export default function AdminPage() {
       if (isAdminEmail(user?.email)) {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
-        if (token) {
-          const granted = await activateAdminSession(token);
-          if (cancelled) return;
-          if (granted) {
-            await enterAdmin();
-            setChecking(false);
-            return;
-          }
-        }
+        if (token) void activateAdminSession(token);
+        if (cancelled) return;
+        await enterAdmin();
+        setChecking(false);
+        return;
       }
 
       if (!cancelled) setChecking(false);
@@ -150,7 +147,7 @@ export default function AdminPage() {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/admin/logout', { method: 'POST' });
+    await adminRequest('/api/admin/logout', { method: 'POST' });
     window.sessionStorage.setItem('labib-skip-auto-google', '1');
     await signOut();
     setAuthenticated(false);
@@ -188,7 +185,7 @@ export default function AdminPage() {
       form.set('externalUrl', externalUrl.trim());
       if (file) form.set('file', file);
 
-      const response = await fetch('/api/admin/resources', { method: 'POST', body: form });
+      const response = await adminRequest('/api/admin/resources', { method: 'POST', body: form });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
         toast.error(payload.error || 'تعذر رفع المحتوى');
@@ -205,7 +202,7 @@ export default function AdminPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const response = await fetch(`/api/admin/resources/${id}`, { method: 'DELETE' });
+    const response = await adminRequest(`/api/admin/resources/${id}`, { method: 'DELETE' });
     if (!response.ok) {
       toast.error('تعذر حذف العنصر');
       return;
@@ -225,7 +222,7 @@ export default function AdminPage() {
     try {
       const form = new FormData();
       for (const item of allowed) form.append('file', item);
-      const response = await fetch('/api/admin/ingest', { method: 'POST', body: form });
+      const response = await adminRequest('/api/admin/ingest', { method: 'POST', body: form });
       const payload = (await response.json()) as {
         error?: string;
         items?: Array<{ summary: string; scannedLikely: boolean; item: { title: string } }>;

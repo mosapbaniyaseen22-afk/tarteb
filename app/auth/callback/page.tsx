@@ -17,12 +17,16 @@ let pendingCodeExchange: Promise<{
 
 function exchangeCode(code: string) {
   if (!pendingCodeExchange) {
-    pendingCodeExchange = supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => ({
-      userId: data.session?.user?.id ?? null,
-      email: data.session?.user?.email ?? null,
-      accessToken: data.session?.access_token ?? null,
-      errorMessage: error?.message ?? null,
-    }));
+    pendingCodeExchange = supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
+      const user = data.session?.user;
+      const metaEmail = typeof user?.user_metadata?.email === 'string' ? user.user_metadata.email : null;
+      return {
+        userId: user?.id ?? null,
+        email: user?.email ?? metaEmail,
+        accessToken: data.session?.access_token ?? null,
+        errorMessage: error?.message ?? null,
+      };
+    });
   }
   return pendingCodeExchange;
 }
@@ -42,12 +46,12 @@ export default function AuthCallbackPage() {
     };
 
     const redirectForUser = async (userId: string, email: string | null, accessToken: string | null) => {
-      if (isAdminEmail(email) && accessToken) {
-        const granted = await activateAdminSession(accessToken);
-        if (!cancelled && granted) {
-          router.replace('/admin');
-          return;
-        }
+      if (accessToken) {
+        void activateAdminSession(accessToken);
+      }
+      if (isAdminEmail(email)) {
+        if (!cancelled) router.replace('/admin');
+        return;
       }
 
       const [{ data: profile }, { data: subjects }] = await Promise.all([
@@ -85,9 +89,12 @@ export default function AuthCallbackPage() {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
       if (data.session?.user?.id) {
+        const metaEmail = typeof data.session.user.user_metadata?.email === 'string'
+          ? data.session.user.user_metadata.email
+          : null;
         await redirectForUser(
           data.session.user.id,
-          data.session.user.email ?? null,
+          data.session.user.email ?? metaEmail,
           data.session.access_token ?? null,
         );
         return;
