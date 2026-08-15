@@ -6,6 +6,7 @@ import { supabase } from './supabase';
 import type { Profile, UserSubject } from './supabase';
 import { googleAuthErrorMessage, signOutUser } from './firebase';
 import { PROFILE_STORAGE_KEY, buildUserSubjects, clearGuestData, guestStore } from './guest-db';
+import { markSubscriberLoggedOut, pingSubscriberPresence, resumeSubscriberPresence } from './subscriber-presence';
 
 type AuthUser = {
   id: string;
@@ -46,7 +47,7 @@ function emailAuthErrorMessage(err: unknown) {
     : '';
   const lower = message.toLowerCase();
   if (lower.includes('invalid login') || lower.includes('invalid credentials')) {
-    return 'البريد أو كلمة السر غير صحيحة';
+    return 'البريد أو كلمة السر غير صحيحة. إذا سجّلت عبر جوجل استخدم زر جوجل';
   }
   if (lower.includes('already registered') || lower.includes('already been registered')) {
     return 'هذا البريد مسجّل مسبقاً، سجّل الدخول';
@@ -250,6 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem('labib-skip-auto-google', '1');
     }
+    await markSubscriberLoggedOut();
     await signOutUser();
     clearGuestData();
     setUser(null);
@@ -297,6 +299,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    resumeSubscriberPresence();
+    void pingSubscriberPresence({
+      name: profile?.full_name || user.full_name,
+      email: user.email,
+      avatarUrl: user.avatar_url,
+      stage: profile?.stage ?? null,
+    });
+  }, [user, profile?.full_name, profile?.stage]);
 
   return (
     <AuthContext.Provider

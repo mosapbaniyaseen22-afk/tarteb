@@ -5,12 +5,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as { username?: string; password?: string } | null;
-  const username = body?.username?.trim() ?? '';
+  const body = (await request.json().catch(() => null)) as { email?: string; username?: string; password?: string } | null;
+  const username = (body?.email ?? body?.username ?? '').trim();
   const password = body?.password ?? '';
 
   if (!username || !password) {
-    return NextResponse.json({ error: 'أدخل اسم المستخدم وكلمة السر' }, { status: 400 });
+    return NextResponse.json({ error: 'أدخل البريد الإلكتروني وكلمة السر' }, { status: 400 });
   }
 
   const adminUser = await verifyAdminLogin(username, password);

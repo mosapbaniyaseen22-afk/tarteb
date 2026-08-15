@@ -34,6 +34,8 @@ yarn-error.log*
 /data/uploads
 /data/extracted
 /data/subscribers.json
+/data/activation-codes.json
+/data/user-subscriptions.json
 
 # supabase local
 supabase/.temp/

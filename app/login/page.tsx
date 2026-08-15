@@ -2,7 +2,9 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { isReturningStudent, useAuth } from '@/lib/auth-context';
+import { isAdminEmail } from '@/lib/admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,6 +41,7 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (loading || !profileLoaded || !user) return;
@@ -47,9 +50,24 @@ export default function LoginPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (submitting || signingIn) return;
     try {
       switch (mode) {
         case 'login':
+          if (isAdminEmail(email) || email.trim().toLowerCase() === 'ahmad') {
+            setSubmitting(true);
+            const response = await fetch('/api/admin/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password }),
+            });
+            if (response.ok) {
+              router.replace('/admin');
+              return;
+            }
+            toast.error('البريد أو كلمة السر غير صحيحة');
+            return;
+          }
           await signInWithEmail(email, password);
           return;
         case 'signup':
@@ -63,6 +81,8 @@ export default function LoginPage() {
       }
     } catch {
       // Error toast is shown by auth context.
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -140,10 +160,10 @@ export default function LoginPage() {
             </div>
             <Button
               type="submit"
-              disabled={signingIn || (mode === 'signup' && (!fullName.trim() || password.trim().length < 6))}
+              disabled={signingIn || submitting || (mode === 'signup' && (!fullName.trim() || password.trim().length < 6))}
               className="h-12 w-full rounded-2xl gradient-primary font-semibold"
             >
-              {signingIn ? '...جاري التنفيذ' : mode === 'signup' ? 'إنشاء حساب' : 'دخول'}
+              {signingIn || submitting ? '...جاري التنفيذ' : mode === 'signup' ? 'إنشاء حساب' : 'دخول'}
             </Button>
           </form>
 

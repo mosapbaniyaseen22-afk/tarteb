@@ -8,16 +8,27 @@ import { Button } from '@/components/ui/button';
 import { isReturningStudent, useAuth } from '@/lib/auth-context';
 import { LabibLogo } from '@/components/labib-logo';
 
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" aria-hidden="true">
+      <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.2-1.7 2.9l2.8 2.2c1.6-1.5 2.6-3.7 2.6-6.3 0-.6-.1-1.2-.2-1.8H12z" />
+      <path fill="#34A853" d="M6.6 14.4 5.5 15.3l-3.8 3C4 21.1 7.7 23 12 23c3 0 5.5-1 7.4-2.7l-2.8-2.2c-.8.5-1.9.9-3.1.9-2.4 0-4.5-1.6-5.2-3.8z" />
+      <path fill="#4A90E2" d="M2.2 7.7C1.4 9.3 1 11.1 1 13s.4 3.7 1.2 5.3l4.4-3.4c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9z" />
+      <path fill="#FBBC05" d="M12 5.1c1.6 0 3.1.6 4.2 1.6l3.1-3.1C17.5 1.9 15 1 12 1 7.7 1 4 2.9 2.2 7.7l4.4 3.4C7.5 6.9 9.6 5.1 12 5.1z" />
+    </svg>
+  );
+}
+
 export default function LandingPage() {
   const router = useRouter();
-  const { user, profile, userSubjects, loading, profileLoaded, signingIn } = useAuth();
+  const { user, profile, userSubjects, loading, profileLoaded, signingIn, signInWithGoogle } = useAuth();
 
   useEffect(() => {
     if (loading || !profileLoaded || !user) return;
     router.replace(isReturningStudent(profile, userSubjects) ? '/dashboard' : '/onboarding');
   }, [loading, profileLoaded, user, profile, userSubjects, router]);
 
-  const startNow = () => {
+  const goToApp = () => {
     if (user && isReturningStudent(profile, userSubjects)) {
       router.push('/dashboard');
       return;
@@ -27,6 +38,14 @@ export default function LandingPage() {
       return;
     }
     router.push('/login');
+  };
+
+  const startWithGoogle = () => {
+    if (user) {
+      goToApp();
+      return;
+    }
+    void signInWithGoogle({ selectAccount: true });
   };
 
   const features = [
@@ -56,20 +75,11 @@ export default function LandingPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
-            className="h-11 rounded-full px-4 glass-card md:px-6"
-            onClick={() => {
-              router.push('/admin');
-            }}
-          >
-            أدمن
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={startNow}
+            onClick={goToApp}
             disabled={loading || signingIn}
             className="h-11 rounded-full px-4 glass-card md:px-6"
           >
-            {user ? 'لوحة التحكم' : 'تسجيل الدخول'}
+            {user ? 'لوحة التحكم' : 'تسجيل الدخول بالبريد الإلكتروني'}
           </Button>
         </div>
       </nav>
@@ -114,12 +124,21 @@ export default function LandingPage() {
           className="mt-8 flex w-full flex-col items-stretch gap-3 sm:mt-10 sm:flex-row sm:items-center sm:justify-center"
         >
           <Button
-            onClick={startNow}
+            onClick={startWithGoogle}
             disabled={loading || signingIn}
             size="lg"
             className="h-14 w-full rounded-2xl gradient-primary px-8 text-base font-semibold shadow-glow hover:opacity-90 sm:w-auto"
           >
-            {signingIn ? '...جاري تسجيل الدخول' : user ? 'متابعة' : 'ابدأ الآن'}
+            {signingIn ? (
+              '...جاري تسجيل الدخول'
+            ) : user ? (
+              'متابعة'
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <GoogleIcon />
+                تسجيل الدخول عبر جوجل
+              </span>
+            )}
           </Button>
 
         </motion.div>
@@ -190,12 +209,21 @@ export default function LandingPage() {
           <h2 className="mb-4 text-3xl font-bold md:text-4xl">ابدأ رحلتك نحو التفوق</h2>
           <p className="mb-8 text-muted-foreground">انضم لآلاف الطلاب الذين يستخدمون لبيب لتحقيق أعلى علاماتهم في التوجيهي</p>
           <Button
-            onClick={startNow}
+            onClick={startWithGoogle}
             disabled={loading || signingIn}
             size="lg"
             className="h-14 w-full rounded-2xl gradient-primary px-10 text-base font-semibold shadow-glow sm:w-auto"
           >
-            {signingIn ? '...جاري تسجيل الدخول' : 'ابدأ الآن'}
+            {signingIn ? (
+              '...جاري تسجيل الدخول'
+            ) : user ? (
+              'متابعة'
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <GoogleIcon />
+                تسجيل الدخول عبر جوجل
+              </span>
+            )}
           </Button>
         </motion.div>
       </section>

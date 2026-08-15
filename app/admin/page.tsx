@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, LogOut, Upload, Trash2, FileDown, Link as LinkIcon, FileSearch, Users } from 'lucide-react';
+import { Shield, LogOut, Upload, Trash2, FileDown, Link as LinkIcon, FileSearch, Users, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -11,35 +11,85 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LabibLogo } from '@/components/labib-logo';
+import { AdminActivationCodes } from '@/components/admin-activation-codes';
 import {
+  ADMIN_EMAIL,
   ADMIN_RESOURCE_TYPES,
   ADMIN_SUBJECT_OPTIONS,
   adminFileUrl,
   loadAdminResources,
-  isSubscriberOnline,
+  getSubscriberPresence,
   type AdminResource,
   type AdminResourceType,
   type AppSubscriber,
+  type SubscriberPresence,
 } from '@/lib/admin';
 import { getStageLabel } from '@/lib/utils';
 
 const EXAM_YEARS = Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + 1 - index));
 
+type UserListFilter = 'all' | 'online' | 'logged_out';
+
 function formatSubscriberSeen(iso: string) {
   const seen = new Date(iso).getTime();
   if (!Number.isFinite(seen)) return '';
   const diff = Date.now() - seen;
-  if (diff < 2 * 60 * 1000) return 'متواجد الآن';
+  if (diff < 2 * 60 * 1000) return 'الآن';
   if (diff < 60 * 60 * 1000) return `قبل ${Math.max(1, Math.floor(diff / 60000))} د`;
   if (diff < 24 * 60 * 60 * 1000) return `قبل ${Math.floor(diff / 3600000)} س`;
   return `آخر ظهور ${new Date(iso).toLocaleDateString('ar-JO')}`;
+}
+
+function presenceLabel(presence: SubscriberPresence) {
+  switch (presence) {
+    case 'online':
+      return 'متواجد الآن';
+    case 'logged_out':
+      return 'سجّل خروج';
+    case 'away':
+      return 'غير متصل';
+    default: {
+      const exhaustive: never = presence;
+      return exhaustive;
+    }
+  }
+}
+
+function filterSubscribers(rows: AppSubscriber[], filter: UserListFilter) {
+  switch (filter) {
+    case 'all':
+      return rows;
+    case 'online':
+      return rows.filter((row) => getSubscriberPresence(row) === 'online');
+    case 'logged_out':
+      return rows.filter((row) => getSubscriberPresence(row) === 'logged_out');
+    default: {
+      const exhaustive: never = filter;
+      return exhaustive;
+    }
+  }
+}
+
+function emptyUsersMessage(filter: UserListFilter) {
+  switch (filter) {
+    case 'all':
+      return 'لا يوجد مستخدمون ظاهرون بعد. يظهر الاسم هنا تلقائياً عندما يدخل الطالب للتطبيق.';
+    case 'online':
+      return 'لا يوجد أحد متواجد الآن.';
+    case 'logged_out':
+      return 'لا يوجد من سجّل خروج بعد.';
+    default: {
+      const exhaustive: never = filter;
+      return exhaustive;
+    }
+  }
 }
 
 export default function AdminPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
 
@@ -56,6 +106,8 @@ export default function AdminPage() {
   const [dragOver, setDragOver] = useState(false);
   const [ingestNotes, setIngestNotes] = useState<string[]>([]);
   const [subscribers, setSubscribers] = useState<AppSubscriber[]>([]);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [userFilter, setUserFilter] = useState<UserListFilter>('all');
 
   const refreshItems = async () => {
     setItems(await loadAdminResources());
@@ -103,6 +155,19 @@ export default function AdminPage() {
     }));
   }, [items]);
 
+  const onlineCount = useMemo(
+    () => subscribers.filter((row) => getSubscriberPresence(row) === 'online').length,
+    [subscribers],
+  );
+  const loggedOutCount = useMemo(
+    () => subscribers.filter((row) => getSubscriberPresence(row) === 'logged_out').length,
+    [subscribers],
+  );
+  const visibleUsers = useMemo(
+    () => filterSubscribers(subscribers, userFilter),
+    [subscribers, userFilter],
+  );
+
   const handleLogin = async (event: FormEvent) => {
     event.preventDefault();
     setLoggingIn(true);
@@ -110,7 +175,7 @@ export default function AdminPage() {
       const response = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) {
@@ -250,13 +315,14 @@ export default function AdminPage() {
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <Label className="mb-2 block">اسم المستخدم</Label>
+              <Label className="mb-2 block">البريد الإلكتروني</Label>
               <Input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="ahmad"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder={ADMIN_EMAIL}
                 className="rounded-xl"
-                autoComplete="username"
+                autoComplete="email"
               />
             </div>
             <div>
@@ -290,7 +356,7 @@ export default function AdminPage() {
             <LabibLogo size="md" />
             <div>
               <div className="font-bold">لوحة أدمن لبيب</div>
-              <div className="text-xs text-muted-foreground">نشر المواد والامتحانات للطلاب</div>
+              <div className="text-xs text-muted-foreground">أكواد التفعيل، المستخدمون، ونشر المواد</div>
             </div>
           </div>
           <Button variant="ghost" className="rounded-xl text-destructive hover:bg-destructive/10" onClick={handleLogout}>
@@ -301,59 +367,91 @@ export default function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 p-4 md:p-8">
-        <Card className="rounded-3xl border-0 glass-card p-6 shadow-soft">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <AdminActivationCodes />
+
+        <Card className="rounded-3xl border-0 glass-card p-4 shadow-soft md:p-6">
+          <button
+            type="button"
+            onClick={() => setUsersOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 text-right"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Users className="h-6 w-6" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold">المشتركون الحاليون</h2>
-                <p className="text-sm text-muted-foreground">الطلاب المسجلون في التطبيق</p>
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold">قائمة المستخدمين</h2>
+                <p className="truncate text-sm text-muted-foreground">
+                  {subscribers.length} مستخدم • {onlineCount} متواجد الآن • {loggedOutCount} سجّل خروج
+                </p>
               </div>
             </div>
-            <div className="flex gap-3">
-              <div className="rounded-2xl bg-primary/10 px-4 py-2 text-center">
-                <div className="text-2xl font-bold text-primary">{subscribers.length}</div>
-                <div className="text-xs text-muted-foreground">مشترك</div>
+            <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${usersOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {usersOpen && (
+            <div className="mt-5 space-y-4">
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { id: 'all' as const, label: 'الكل', count: subscribers.length },
+                  { id: 'online' as const, label: 'متواجد الآن', count: onlineCount },
+                  { id: 'logged_out' as const, label: 'سجّل خروج', count: loggedOutCount },
+                ]).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setUserFilter(option.id)}
+                    className={`rounded-2xl px-3 py-2 text-center transition ${
+                      userFilter === option.id
+                        ? 'gradient-primary text-white shadow-glow'
+                        : 'bg-accent/50 text-muted-foreground'
+                    }`}
+                  >
+                    <div className="text-lg font-bold">{option.count}</div>
+                    <div className="text-[11px] sm:text-xs">{option.label}</div>
+                  </button>
+                ))}
               </div>
-              <div className="rounded-2xl bg-secondary/10 px-4 py-2 text-center">
-                <div className="text-2xl font-bold text-secondary">
-                  {subscribers.filter((row) => isSubscriberOnline(row.lastSeenAt)).length}
-                </div>
-                <div className="text-xs text-muted-foreground">متواجد الآن</div>
-              </div>
-            </div>
-          </div>
-          {subscribers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              لا يوجد مشتركون ظاهرون بعد. يظهر الاسم هنا تلقائياً عندما يدخل الطالب للتطبيق.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {subscribers.map((subscriber) => {
-                const online = isSubscriberOnline(subscriber.lastSeenAt);
-                return (
-                  <div key={subscriber.id} className="flex items-center gap-3 rounded-2xl bg-accent/40 px-4 py-3">
-                    <div className="relative flex h-10 w-10 items-center justify-center rounded-full gradient-primary text-sm font-bold text-white">
-                      {(subscriber.name || 'ط').charAt(0)}
-                      <span
-                        className={`absolute -left-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-background ${
-                          online ? 'bg-green-500' : 'bg-muted-foreground/40'
-                        }`}
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-semibold">{subscriber.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {subscriber.stage ? getStageLabel(subscriber.stage) : 'طالب'}
-                        {subscriber.email ? ` • ${subscriber.email}` : ''}
+
+              {visibleUsers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{emptyUsersMessage(userFilter)}</p>
+              ) : (
+                <div className="space-y-2">
+                  {visibleUsers.map((subscriber) => {
+                    const presence = getSubscriberPresence(subscriber);
+                    const statusTime = presence === 'logged_out' && subscriber.loggedOutAt
+                      ? subscriber.loggedOutAt
+                      : subscriber.lastSeenAt;
+                    return (
+                      <div key={subscriber.id} className="flex items-center gap-3 rounded-2xl bg-accent/40 px-4 py-3">
+                        <div className="relative flex h-10 w-10 items-center justify-center rounded-full gradient-primary text-sm font-bold text-white">
+                          {(subscriber.name || 'ط').charAt(0)}
+                          <span
+                            className={`absolute -left-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-background ${
+                              presence === 'online'
+                                ? 'bg-green-500'
+                                : presence === 'logged_out'
+                                  ? 'bg-destructive'
+                                  : 'bg-muted-foreground/40'
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold">{subscriber.name}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {subscriber.stage ? getStageLabel(subscriber.stage) : 'طالب'}
+                            {subscriber.email ? ` • ${subscriber.email}` : ''}
+                          </div>
+                        </div>
+                        <div className="text-left text-xs text-muted-foreground">
+                          <div className="font-medium text-foreground">{presenceLabel(presence)}</div>
+                          <div>{formatSubscriberSeen(statusTime)}</div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">{formatSubscriberSeen(subscriber.lastSeenAt)}</div>
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </Card>

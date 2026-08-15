@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { MotivationTicker } from '@/components/motivation-ticker';
 import { DashboardInsightCards } from '@/components/dashboard-insight-cards';
+import { StudentSubscriptionCard } from '@/components/student-subscription-card';
 import { jordanDateISO } from '@/lib/prayer-times';
 import { subjectProgressPercent } from '@/lib/user-stats';
 import type { QuizAttempt, UserSubject, ScheduleEntry, StudySession } from '@/lib/supabase';
@@ -91,6 +92,8 @@ export default function DashboardPage() {
         </div>
         <MotivationTicker className="sm:w-[min(26rem,48%)]" />
       </motion.div>
+
+      <StudentSubscriptionCard />
 
       <DashboardInsightCards
         tawjihiYear={profile?.tawjihi_year}

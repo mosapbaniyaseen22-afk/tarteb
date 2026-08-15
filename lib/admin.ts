@@ -24,7 +24,10 @@ export type AppSubscriber = {
   stage: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
+  loggedOutAt: string | null;
 };
+
+export type SubscriberPresence = 'online' | 'logged_out' | 'away';
 
 export const SUBSCRIBER_ONLINE_MS = 5 * 60 * 1000;
 
@@ -32,6 +35,15 @@ export function isSubscriberOnline(lastSeenAt: string, now = Date.now()) {
   const seen = new Date(lastSeenAt).getTime();
   if (!Number.isFinite(seen)) return false;
   return now - seen < SUBSCRIBER_ONLINE_MS;
+}
+
+export function getSubscriberPresence(
+  row: Pick<AppSubscriber, 'lastSeenAt' | 'loggedOutAt'>,
+  now = Date.now(),
+): SubscriberPresence {
+  if (row.loggedOutAt) return 'logged_out';
+  if (isSubscriberOnline(row.lastSeenAt, now)) return 'online';
+  return 'away';
 }
 
 export type AdminResource = {

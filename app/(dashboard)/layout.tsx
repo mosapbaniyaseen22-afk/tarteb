@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
 import { LabibLogo } from '@/components/labib-logo';
+import { pingSubscriberPresence } from '@/lib/subscriber-presence';
 
 const navItems = [
   { href: '/dashboard', label: 'الرئيسية', icon: Home },
@@ -58,21 +58,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     let cancelled = false;
 
     const ping = async () => {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token || cancelled) return;
-      await fetch('/api/subscribers/heartbeat', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: profile?.full_name || user.full_name,
-          email: user.email,
-          avatarUrl: user.avatar_url,
-          stage: profile?.stage ?? null,
-        }),
+      if (cancelled) return;
+      await pingSubscriberPresence({
+        name: profile?.full_name || user.full_name,
+        email: user.email,
+        avatarUrl: user.avatar_url,
+        stage: profile?.stage ?? null,
       });
     };
 

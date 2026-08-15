@@ -17,6 +17,7 @@ import {
   Award, TrendingUp, CircleHelp, Clock, Star, LogOut
 } from 'lucide-react';
 import type { UserSubject, QuizAttempt, StudySession } from '@/lib/supabase';
+import { StudentSubscriptionCard } from '@/components/student-subscription-card';
 
 export default function ProfilePage() {
   const { user, profile, userSubjects, signOut } = useAuth();
@@ -99,6 +100,8 @@ export default function ProfilePage() {
           </div>
         </Card>
       </motion.div>
+
+      <StudentSubscriptionCard />
 
       {/* Info grid */}
       <div className="grid gap-4 md:grid-cols-2">

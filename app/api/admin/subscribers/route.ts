@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isSubscriberOnline } from '@/lib/admin';
+import { getSubscriberPresence } from '@/lib/admin';
 import { getAdminSession, readSubscribers } from '@/lib/admin-server';
 
 export const runtime = 'nodejs';
@@ -12,11 +12,13 @@ export async function GET() {
   }
 
   const subscribers = await readSubscribers();
-  const onlineCount = subscribers.filter((row) => isSubscriberOnline(row.lastSeenAt)).length;
+  const onlineCount = subscribers.filter((row) => getSubscriberPresence(row) === 'online').length;
+  const loggedOutCount = subscribers.filter((row) => getSubscriberPresence(row) === 'logged_out').length;
 
   return NextResponse.json({
     count: subscribers.length,
     onlineCount,
+    loggedOutCount,
     subscribers,
   });
 }
