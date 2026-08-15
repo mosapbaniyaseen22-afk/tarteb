@@ -121,8 +121,7 @@ export async function getAdminSession() {
   const token = cookies().get(AUTH_COOKIE)?.value;
   const session = readSessionToken(token);
   if (!session) return null;
-  const auth = await readAuth();
-  if (session.username !== auth.username) return null;
+  if (session.username !== 'admin') return null;
   return session;
 }
 

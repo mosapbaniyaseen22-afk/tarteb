@@ -20,14 +20,21 @@ type AuthContextType = {
   userSubjects: UserSubject[];
   loading: boolean;
   signingIn: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (options?: { selectAccount?: boolean }) => Promise<void>;
   signOut: () => Promise<void>;
+  profileLoaded: boolean;
   refreshProfile: () => Promise<void>;
   saveProfile: (profile: Profile) => Promise<void>;
   saveSubjects: (names: string[], stage?: string | null, field?: string | null) => Promise<UserSubject[]>;
 };
 
 export { PROFILE_STORAGE_KEY, buildUserSubjects };
+
+export function isReturningStudent(profile: Profile | null, subjects: UserSubject[] = []): boolean {
+  if (profile?.onboarding_complete) return true;
+  if (profile?.stage?.trim()) return true;
+  return subjects.length > 0;
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -51,31 +58,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userSubjects, setUserSubjects] = useState<UserSubject[]>([]);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   const loadProfile = async (userId: string) => {
     try {
       const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-      const nextProfile = (data as Profile | null) ?? guestStore.getProfile();
-      setProfile(nextProfile);
-      if (nextProfile) guestStore.setProfile(nextProfile);
+      const guest = guestStore.getProfile();
+      let nextProfile = (data as Profile | null) ?? (guest?.id === userId ? guest : null);
 
       const { data: subjects } = await supabase
         .from('user_subjects')
         .select('*, subjects(*)')
         .eq('user_id', userId);
-      const nextSubjects = (subjects as UserSubject[] | null)?.length
-        ? (subjects as UserSubject[])
-        : guestStore.getSubjects();
+      const cloudSubjects = (subjects as UserSubject[] | null) ?? [];
+      const guestSubjects = guestStore.getSubjects().filter((item) => item.user_id === userId);
+      const nextSubjects = cloudSubjects.length ? cloudSubjects : guestSubjects;
+
+      if (nextProfile && !nextProfile.onboarding_complete && isReturningStudent(nextProfile, nextSubjects)) {
+        nextProfile = { ...nextProfile, onboarding_complete: true, updated_at: new Date().toISOString() };
+        void supabase.from('profiles').update({
+          onboarding_complete: true,
+          updated_at: nextProfile.updated_at,
+        }).eq('id', userId);
+      }
+
+      setProfile(nextProfile);
+      if (nextProfile) guestStore.setProfile(nextProfile);
       setUserSubjects(nextSubjects);
       if (nextSubjects.length) guestStore.setSubjects(nextSubjects);
     } catch (err) {
       console.error(err);
-      setProfile(guestStore.getProfile());
-      setUserSubjects(guestStore.getSubjects());
+      const guest = guestStore.getProfile();
+      setProfile(guest?.id === userId ? guest : null);
+      setUserSubjects(guestStore.getSubjects().filter((item) => item.user_id === userId));
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (options?: { selectAccount?: boolean }) => {
     if (signingIn) return;
     setSigningIn(true);
     try {
@@ -84,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           skipBrowserRedirect: true,
+          queryParams: options?.selectAccount ? { prompt: 'select_account' } : undefined,
         },
       });
 
@@ -176,38 +196,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let generation = 0;
 
     const applySession = async (sessionUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> } | null) => {
+      const current = ++generation;
       if (!sessionUser) {
         setUser(null);
         setProfile(null);
         setUserSubjects([]);
-        setLoading(false);
+        if (!cancelled && current === generation) {
+          setProfileLoaded(true);
+          setLoading(false);
+        }
         return;
       }
 
       setUser(mapAuthUser(sessionUser));
       setLoading(true);
-      await Promise.race([
-        loadProfile(sessionUser.id),
-        new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 4000);
-        }),
-      ]);
-      if (!cancelled) setLoading(false);
+      setProfileLoaded(false);
+      await loadProfile(sessionUser.id);
+      if (cancelled || current !== generation) return;
+      setProfileLoaded(true);
+      setLoading(false);
     };
 
-    const init = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (cancelled) return;
-      await applySession(data.session?.user ?? null);
-    };
-
-    void init();
-
-    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (cancelled) return;
-      await applySession(session?.user ?? null);
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'TOKEN_REFRESHED') return;
+      // Never await inside this callback — it can deadlock the auth client lock.
+      window.setTimeout(() => {
+        if (cancelled) return;
+        void applySession(session?.user ?? null);
+      }, 0);
     });
 
     return () => {
@@ -224,6 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userSubjects,
         loading,
         signingIn,
+        profileLoaded,
         signInWithGoogle,
         signOut,
         refreshProfile,

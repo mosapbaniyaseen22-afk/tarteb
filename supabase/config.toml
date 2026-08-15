@@ -2,10 +2,12 @@ project_id = "qmzovsnnsuqcckzumima"
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
+site_url = "https://tarteb-805.netlify.app"
 additional_redirect_urls = [
-  "http://localhost:3000/auth/callback",
-  "http://localhost:3000/**"
+  "https://tarteb-805.netlify.app",
+  "https://tarteb-805.netlify.app/auth/callback",
+  "http://localhost:3000",
+  "http://localhost:3000/auth/callback"
 ]
 
 [auth.external.google]

@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { BookOpen, Brain, Clock, CircleHelp, Trophy, Moon, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/lib/auth-context';
+import { isReturningStudent, useAuth } from '@/lib/auth-context';
+import { isAdminEmail } from '@/lib/admin';
 import { LabibLogo } from '@/components/labib-logo';
 
 function GoogleIcon() {
@@ -21,25 +22,35 @@ function GoogleIcon() {
 
 export default function LandingPage() {
   const router = useRouter();
-  const { user, profile, loading, signingIn, signInWithGoogle } = useAuth();
+  const { user, profile, userSubjects, loading, profileLoaded, signingIn, signInWithGoogle } = useAuth();
 
   const autoStarted = useRef(false);
 
   useEffect(() => {
-    if (loading || autoStarted.current) return;
+    if (loading || !profileLoaded || autoStarted.current) return;
     if (user) {
       autoStarted.current = true;
-      router.replace(profile?.onboarding_complete ? '/dashboard' : '/onboarding');
+      router.replace(
+        isAdminEmail(user.email)
+          ? '/admin'
+          : isReturningStudent(profile, userSubjects)
+            ? '/dashboard'
+            : '/onboarding',
+      );
       return;
     }
     if (window.sessionStorage.getItem('labib-skip-auto-google')) return;
     autoStarted.current = true;
     void signInWithGoogle();
-  }, [loading, user, profile, router, signInWithGoogle]);
+  }, [loading, profileLoaded, user, profile, userSubjects, router, signInWithGoogle]);
 
   const startNow = async () => {
     window.sessionStorage.removeItem('labib-skip-auto-google');
-    if (user && profile?.onboarding_complete) {
+    if (user && isAdminEmail(user.email)) {
+      router.push('/admin');
+      return;
+    }
+    if (user && isReturningStudent(profile, userSubjects)) {
       router.push('/dashboard');
       return;
     }
@@ -79,7 +90,6 @@ export default function LandingPage() {
             variant="ghost"
             className="h-11 rounded-full px-4 glass-card md:px-6"
             onClick={() => {
-              window.sessionStorage.setItem('labib-skip-auto-google', '1');
               router.push('/admin');
             }}
           >

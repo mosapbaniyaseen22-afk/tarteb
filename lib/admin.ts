@@ -148,3 +148,17 @@ export async function loadAdminResources(): Promise<AdminResource[]> {
 export function adminFileUrl(id: string) {
   return `/api/admin/files/${id}`;
 }
+
+export const ADMIN_EMAIL = 'ahmadqudomi777@gmail.com';
+
+export function isAdminEmail(email: string | null | undefined) {
+  return (email ?? '').trim().toLowerCase() === ADMIN_EMAIL;
+}
+
+export async function activateAdminSession(accessToken: string) {
+  const response = await fetch('/api/admin/google', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return response.ok;
+}

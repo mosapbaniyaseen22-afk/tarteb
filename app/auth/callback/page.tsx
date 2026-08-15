@@ -2,15 +2,33 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
+import { isReturningStudent } from '@/lib/auth-context';
+import { activateAdminSession, isAdminEmail } from '@/lib/admin';
 import { supabase } from '@/lib/supabase';
+import type { Profile, UserSubject } from '@/lib/supabase';
 import { LabibLogo } from '@/components/labib-logo';
+
+let pendingCodeExchange: Promise<{
+  userId: string | null;
+  email: string | null;
+  accessToken: string | null;
+  errorMessage: string | null;
+}> | null = null;
+
+function exchangeCode(code: string) {
+  if (!pendingCodeExchange) {
+    pendingCodeExchange = supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => ({
+      userId: data.session?.user?.id ?? null,
+      email: data.session?.user?.email ?? null,
+      accessToken: data.session?.access_token ?? null,
+      errorMessage: error?.message ?? null,
+    }));
+  }
+  return pendingCodeExchange;
+}
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const { user, profile, loading } = useAuth();
-  const [exchangeDone, setExchangeDone] = useState(false);
-  const [failed, setFailed] = useState(false);
   const [message, setMessage] = useState('جاري إكمال تسجيل الدخول...');
 
   useEffect(() => {
@@ -18,10 +36,30 @@ export default function AuthCallbackPage() {
 
     const fail = (text: string) => {
       if (cancelled) return;
-      setFailed(true);
       setMessage(text);
       window.sessionStorage.setItem('labib-skip-auto-google', '1');
       window.setTimeout(() => router.replace('/'), 2000);
+    };
+
+    const redirectForUser = async (userId: string, email: string | null, accessToken: string | null) => {
+      if (isAdminEmail(email) && accessToken) {
+        const granted = await activateAdminSession(accessToken);
+        if (!cancelled && granted) {
+          router.replace('/admin');
+          return;
+        }
+      }
+
+      const [{ data: profile }, { data: subjects }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        supabase.from('user_subjects').select('id').eq('user_id', userId),
+      ]);
+      if (cancelled) return;
+      router.replace(
+        isReturningStudent((profile as Profile | null) ?? null, (subjects as UserSubject[] | null) ?? [])
+          ? '/dashboard'
+          : '/onboarding',
+      );
     };
 
     const run = async () => {
@@ -35,15 +73,27 @@ export default function AuthCallbackPage() {
       }
 
       if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        window.history.replaceState({}, '', window.location.pathname);
+        const exchanged = await exchangeCode(code);
         if (cancelled) return;
-        if (error) {
-          fail('تعذر إكمال تسجيل الدخول. سيتم إرجاعك للصفحة الرئيسية.');
+        if (exchanged.userId) {
+          await redirectForUser(exchanged.userId, exchanged.email, exchanged.accessToken);
           return;
         }
       }
 
-      if (!cancelled) setExchangeDone(true);
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (data.session?.user?.id) {
+        await redirectForUser(
+          data.session.user.id,
+          data.session.user.email ?? null,
+          data.session.access_token ?? null,
+        );
+        return;
+      }
+
+      fail('تعذر إكمال تسجيل الدخول. سيتم إرجاعك للصفحة الرئيسية.');
     };
 
     void run();
@@ -51,34 +101,6 @@ export default function AuthCallbackPage() {
       cancelled = true;
     };
   }, [router]);
-
-  useEffect(() => {
-    if (!exchangeDone || failed || loading) return;
-    if (user) {
-      router.replace(profile?.onboarding_complete ? '/dashboard' : '/onboarding');
-    }
-  }, [exchangeDone, failed, loading, user, profile, router]);
-
-  useEffect(() => {
-    if (!exchangeDone || failed) return;
-    const timer = window.setTimeout(() => {
-      if (user) return;
-      setFailed(true);
-      setMessage('تعذر إكمال تسجيل الدخول. سيتم إرجاعك للصفحة الرئيسية.');
-      window.sessionStorage.setItem('labib-skip-auto-google', '1');
-      router.replace('/');
-    }, 10000);
-    return () => window.clearTimeout(timer);
-  }, [exchangeDone, failed, user, router]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setMessage((current) =>
-        failed ? current : 'ما زال الانتظار جارياً... إذا استمر، أعد المحاولة من الصفحة الرئيسية.',
-      );
-    }, 8000);
-    return () => window.clearTimeout(timer);
-  }, [failed]);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 gradient-hero">

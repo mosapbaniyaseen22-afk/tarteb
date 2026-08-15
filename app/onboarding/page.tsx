@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
+import { isReturningStudent, useAuth } from '@/lib/auth-context';
+import { isAdminEmail } from '@/lib/admin';
 import { REGIONS, STUDY_FIELDS, FIELD_SUBJECTS } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,7 @@ import { LabibLogo } from '@/components/labib-logo';
 const FIRST_YEAR_SUBJECTS = ['الرياضيات', 'اللغة العربية', 'التربية الإسلامية', 'تاريخ الأردن'];
 
 export default function OnboardingPage() {
-  const { user, loading, saveProfile, saveSubjects } = useAuth();
+  const { user, profile, userSubjects, loading, profileLoaded, saveProfile, saveSubjects } = useAuth();
   const router = useRouter();
   const [step, setStep] = useState(2);
   const [saving, setSaving] = useState(false);
@@ -28,10 +29,19 @@ export default function OnboardingPage() {
   const [selectedElective, setSelectedElective] = useState('');
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading || !profileLoaded) return;
+    if (!user) {
       router.replace('/');
+      return;
     }
-  }, [loading, user, router]);
+    if (isAdminEmail(user.email)) {
+      router.replace('/admin');
+      return;
+    }
+    if (isReturningStudent(profile, userSubjects)) {
+      router.replace('/dashboard');
+    }
+  }, [loading, profileLoaded, user, profile, userSubjects, router]);
 
   useEffect(() => {
     setFullName(user?.full_name || '');
@@ -104,6 +114,15 @@ export default function OnboardingPage() {
       setSaving(false);
     }
   };
+
+  if (loading || !profileLoaded || !user || isAdminEmail(user.email) || isReturningStudent(profile, userSubjects)) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 gradient-hero">
+        <LabibLogo size="lg" />
+        <p className="text-sm text-muted-foreground">جاري تحميل حسابك...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh gradient-hero flex items-center justify-center p-4 md:p-6">

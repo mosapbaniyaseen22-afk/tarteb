@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, LogOut, Upload, Trash2, FileDown, Link as LinkIcon, KeyRound, FileSearch, Users } from 'lucide-react';
+import { Shield, LogOut, Upload, Trash2, FileDown, Link as LinkIcon, FileSearch, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -10,18 +10,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LabibLogo } from '@/components/labib-logo';
 import {
+  ADMIN_EMAIL,
   ADMIN_RESOURCE_TYPES,
   ADMIN_SUBJECT_OPTIONS,
+  activateAdminSession,
   adminFileUrl,
+  isAdminEmail,
   loadAdminResources,
   isSubscriberOnline,
   type AdminResource,
   type AdminResourceType,
   type AppSubscriber,
 } from '@/lib/admin';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
 import { getStageLabel } from '@/lib/utils';
 
 const EXAM_YEARS = Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + 1 - index));
@@ -36,13 +40,22 @@ function formatSubscriberSeen(iso: string) {
   return `آخر ظهور ${new Date(iso).toLocaleDateString('ar-JO')}`;
 }
 
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+      <path fill="#EA4335" d="M12 10.2v3.6h5.1c-.2 1.2-.8 2.2-1.7 2.9l2.8 2.2c1.6-1.5 2.6-3.7 2.6-6.3 0-.6-.1-1.2-.2-1.8H12z" />
+      <path fill="#34A853" d="M6.6 14.4 5.5 15.3l-3.8 3C4 21.1 7.7 23 12 23c3 0 5.5-1 7.4-2.7l-2.8-2.2c-.8.5-1.9.9-3.1.9-2.4 0-4.5-1.6-5.2-3.8z" />
+      <path fill="#4A90E2" d="M2.2 7.7C1.4 9.3 1 11.1 1 13s.4 3.7 1.2 5.3l4.4-3.4c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9z" />
+      <path fill="#FBBC05" d="M12 5.1c1.6 0 3.1.6 4.2 1.6l3.1-3.1C17.5 1.9 15 1 12 1 7.7 1 4 2.9 2.2 7.7l4.4 3.4C7.5 6.9 9.6 5.1 12 5.1z" />
+    </svg>
+  );
+}
+
 export default function AdminPage() {
   const router = useRouter();
+  const { user, loading, profileLoaded, signingIn, signInWithGoogle, signOut } = useAuth();
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loggingIn, setLoggingIn] = useState(false);
 
   const [items, setItems] = useState<AdminResource[]>([]);
   const [saving, setSaving] = useState(false);
@@ -56,11 +69,6 @@ export default function AdminPage() {
   const [ingesting, setIngesting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [ingestNotes, setIngestNotes] = useState<string[]>([]);
-
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [nextPassword, setNextPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [changingPassword, setChangingPassword] = useState(false);
   const [subscribers, setSubscribers] = useState<AppSubscriber[]>([]);
 
   const refreshItems = async () => {
@@ -79,20 +87,47 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    const check = async () => {
-      try {
-        const response = await fetch('/api/admin/session', { cache: 'no-store' });
-        if (response.ok) {
-          setAuthenticated(true);
-          await refreshItems();
-          await refreshSubscribers();
-        }
-      } finally {
-        setChecking(false);
-      }
+    let cancelled = false;
+
+    const enterAdmin = async () => {
+      setAuthenticated(true);
+      await refreshItems();
+      await refreshSubscribers();
     };
+
+    const check = async () => {
+      const response = await fetch('/api/admin/session', { cache: 'no-store' });
+      if (cancelled) return;
+      if (response.ok) {
+        await enterAdmin();
+        if (!cancelled) setChecking(false);
+        return;
+      }
+
+      if (loading || !profileLoaded) return;
+
+      if (isAdminEmail(user?.email)) {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) {
+          const granted = await activateAdminSession(token);
+          if (cancelled) return;
+          if (granted) {
+            await enterAdmin();
+            setChecking(false);
+            return;
+          }
+        }
+      }
+
+      if (!cancelled) setChecking(false);
+    };
+
     void check();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, profileLoaded, user?.email]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -109,36 +144,18 @@ export default function AdminPage() {
     }));
   }, [items]);
 
-  const handleLogin = async (event: FormEvent) => {
-    event.preventDefault();
-    setLoggingIn(true);
-    try {
-      const response = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        toast.error(payload.error || 'تعذر تسجيل الدخول');
-        return;
-      }
-      setAuthenticated(true);
-      setPassword('');
-      await refreshItems();
-      await refreshSubscribers();
-      toast.success('تم الدخول إلى لوحة الأدمن');
-    } catch {
-      toast.error('تعذر الاتصال بالخادم');
-    } finally {
-      setLoggingIn(false);
-    }
+  const handleGoogleLogin = async () => {
+    window.sessionStorage.removeItem('labib-skip-auto-google');
+    await signInWithGoogle({ selectAccount: true });
   };
 
   const handleLogout = async () => {
     await fetch('/api/admin/logout', { method: 'POST' });
+    window.sessionStorage.setItem('labib-skip-auto-google', '1');
+    await signOut();
     setAuthenticated(false);
     toast.success('تم تسجيل الخروج');
+    router.replace('/');
   };
 
   const resetForm = () => {
@@ -233,35 +250,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleChangePassword = async (event: FormEvent) => {
-    event.preventDefault();
-    if (nextPassword !== confirmPassword) {
-      toast.error('كلمة السر الجديدة غير متطابقة');
-      return;
-    }
-    setChangingPassword(true);
-    try {
-      const response = await fetch('/api/admin/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentPassword, nextPassword }),
-      });
-      const payload = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        toast.error(payload.error || 'تعذر تغيير كلمة السر');
-        return;
-      }
-      setCurrentPassword('');
-      setNextPassword('');
-      setConfirmPassword('');
-      toast.success('تم تحديث كلمة سر الأدمن');
-    } catch {
-      toast.error('تعذر تغيير كلمة السر');
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
   if (checking) {
     return (
       <div className="flex min-h-dvh items-center justify-center gradient-hero">
@@ -283,35 +271,33 @@ export default function AdminPage() {
               <p className="text-sm text-muted-foreground">لوحة إدارة محتوى لبيب</p>
             </div>
           </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <Label className="mb-2 block">اسم المستخدم</Label>
-              <Input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="ahmad"
-                className="rounded-xl"
-                autoComplete="username"
-              />
-            </div>
-            <div>
-              <Label className="mb-2 block">كلمة السر</Label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
-                className="rounded-xl"
-                autoComplete="current-password"
-              />
-            </div>
-            <Button type="submit" disabled={loggingIn} className="h-12 w-full rounded-2xl gradient-primary">
-              {loggingIn ? 'جاري الدخول...' : 'دخول'}
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              الدخول متاح فقط لحساب جوجل الأدمن
+              <span className="mt-1 block font-medium text-foreground">{ADMIN_EMAIL}</span>
+            </p>
+            {user && !isAdminEmail(user.email) && (
+              <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                الحساب الحالي ليس حساب الأدمن. اختر {ADMIN_EMAIL} من نافذة جوجل.
+              </p>
+            )}
+            <Button
+              type="button"
+              disabled={signingIn}
+              onClick={() => void handleGoogleLogin()}
+              className="h-12 w-full rounded-2xl gradient-primary"
+            >
+              {signingIn ? '...جاري تسجيل الدخول' : (
+                <span className="flex items-center justify-center gap-2">
+                  <GoogleIcon />
+                  دخول بجوجل
+                </span>
+              )}
             </Button>
             <Button type="button" variant="ghost" className="w-full rounded-xl" onClick={() => router.push('/')}>
               العودة للمنصة
             </Button>
-          </form>
+          </div>
         </Card>
       </div>
     );
@@ -325,7 +311,7 @@ export default function AdminPage() {
             <LabibLogo size="md" />
             <div>
               <div className="font-bold">لوحة أدمن لبيب</div>
-              <div className="text-xs text-muted-foreground">نشر المواد والامتحانات للطلاب</div>
+              <div className="text-xs text-muted-foreground">{ADMIN_EMAIL}</div>
             </div>
           </div>
           <Button variant="ghost" className="rounded-xl text-destructive hover:bg-destructive/10" onClick={handleLogout}>
@@ -393,13 +379,7 @@ export default function AdminPage() {
           )}
         </Card>
 
-        <Tabs defaultValue="content" className="space-y-6">
-          <TabsList className="h-auto w-full flex-wrap rounded-2xl bg-accent/50 p-1">
-            <TabsTrigger value="content" className="rounded-xl">المحتوى</TabsTrigger>
-            <TabsTrigger value="password" className="rounded-xl">كلمة السر</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="content" className="space-y-6">
+        <div className="space-y-6">
             <Card className="rounded-3xl border-0 glass-card p-6 shadow-soft">
               <div className="mb-4 flex items-center gap-2">
                 <FileSearch className="h-5 w-5 text-primary" />
@@ -567,34 +547,7 @@ export default function AdminPage() {
                 )}
               </section>
             ))}
-          </TabsContent>
-
-          <TabsContent value="password">
-            <Card className="max-w-lg rounded-3xl border-0 glass-card p-6 shadow-soft">
-              <div className="mb-4 flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-primary" />
-                <h2 className="text-xl font-bold">تغيير كلمة سر الأدمن</h2>
-              </div>
-              <form onSubmit={handleChangePassword} className="space-y-4">
-                <div>
-                  <Label className="mb-2 block">كلمة السر الحالية</Label>
-                  <Input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} className="rounded-xl" />
-                </div>
-                <div>
-                  <Label className="mb-2 block">كلمة السر الجديدة</Label>
-                  <Input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} className="rounded-xl" />
-                </div>
-                <div>
-                  <Label className="mb-2 block">تأكيد كلمة السر الجديدة</Label>
-                  <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="rounded-xl" />
-                </div>
-                <Button type="submit" disabled={changingPassword} className="rounded-xl gradient-primary">
-                  {changingPassword ? 'جاري التحديث...' : 'تحديث كلمة السر'}
-                </Button>
-              </form>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        </div>
       </main>
     </div>
   );
