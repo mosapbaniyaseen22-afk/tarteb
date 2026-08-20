@@ -67,6 +67,8 @@ const localDatabase = {
       task_date: new Date().toISOString().split('T')[0],
       start_time: '17:00',
       end_time: '18:00',
+      duration_minutes: 60,
+      kind: 'study',
       priority: 'high',
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -83,8 +85,13 @@ const localDatabase = {
       activity_type: 'study',
       subject_name: 'الرياضيات',
       color: '#2563EB',
+      task_id: null,
+      completed: false,
     },
   ],
+  user_routines: [],
+  schedule_preferences: [],
+  schedule_templates: [],
   quran_progress: [],
   notes: [],
   bookmarks: [],
@@ -370,6 +377,8 @@ export type UserSubject = {
   subjects: Subject;
 };
 
+export type TaskKind = 'study' | 'sport' | 'quran' | 'custom';
+
 export type Task = {
   id: string;
   user_id: string;
@@ -379,10 +388,29 @@ export type Task = {
   task_date: string | null;
   start_time: string | null;
   end_time: string | null;
+  duration_minutes: number | null;
+  kind: TaskKind;
   priority: 'high' | 'medium' | 'low';
   status: 'pending' | 'completed';
   created_at: string;
 };
+
+export function normalizeTaskKind(value: string | null | undefined, title = '', subjectName: string | null = null): TaskKind {
+  switch (value) {
+    case 'study':
+    case 'sport':
+    case 'quran':
+    case 'custom':
+      return value;
+    default: {
+      const haystack = `${title} ${subjectName ?? ''}`;
+      if (haystack.includes('رياض')) return 'sport';
+      if (haystack.includes('قرآن')) return 'quran';
+      if (subjectName) return 'study';
+      return 'custom';
+    }
+  }
+}
 
 export type ScheduleEntry = {
   id: string;
@@ -394,6 +422,121 @@ export type ScheduleEntry = {
   activity_type: string;
   subject_name: string | null;
   color: string;
+  task_id: string | null;
+  completed: boolean;
+};
+
+export type ScheduleTemplateBlock = {
+  id: string;
+  user_id: string;
+  weekday: number;
+  start_time: string;
+  end_time: string;
+  activity: string;
+  activity_type: string;
+  subject_name: string | null;
+  color: string;
+  task_id: string | null;
+  sort_index: number;
+};
+
+export type RoutineIcon = 'sleep' | 'school' | 'center' | 'sport' | 'custom';
+
+export type Routine = {
+  id: string;
+  user_id: string;
+  title: string;
+  icon: RoutineIcon;
+  start_time: string;
+  end_time: string;
+  weekdays: number[];
+  created_at: string;
+};
+
+export function routineNeedsDays(icon: RoutineIcon): boolean {
+  switch (icon) {
+    case 'school':
+    case 'center':
+      return true;
+    case 'sleep':
+    case 'sport':
+    case 'custom':
+      return false;
+    default: {
+      const exhaustive: never = icon;
+      return exhaustive;
+    }
+  }
+}
+
+export function normalizeWeekdays(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+}
+
+export type ScheduleMode = 'same' | 'different' | 'custom';
+
+export function normalizeScheduleMode(value: string | null | undefined): ScheduleMode {
+  switch (value) {
+    case 'same':
+    case 'different':
+    case 'custom':
+      return value;
+    case 'manual':
+      return 'custom';
+    default:
+      return 'different';
+  }
+}
+
+export function weekdayUsesRepeatingTemplate(
+  mode: ScheduleMode,
+  customDays: number[],
+  weekday: number,
+): boolean {
+  return repeatingWeekdays(mode, customDays).includes(weekday);
+}
+
+export function repeatingWeekdays(mode: ScheduleMode, customDays: number[]): number[] {
+  switch (mode) {
+    case 'same':
+      return [0, 1, 2, 3, 4, 5, 6];
+    case 'custom': {
+      const unique: number[] = [];
+      for (const day of customDays) {
+        if (day >= 0 && day <= 6 && !unique.includes(day)) unique.push(day);
+      }
+      return unique;
+    }
+    case 'different':
+      return [];
+    default: {
+      const exhaustive: never = mode;
+      return exhaustive;
+    }
+  }
+}
+
+export function normalizePreferences(prefs: SchedulePreferences): SchedulePreferences {
+  return {
+    ...prefs,
+    schedule_mode: normalizeScheduleMode(prefs.schedule_mode),
+    custom_days: Array.isArray(prefs.custom_days)
+      ? prefs.custom_days.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      : [],
+  };
+}
+
+export type SchedulePreferences = {
+  id: string;
+  user_id: string;
+  wake_time: string;
+  sleep_time: string;
+  notes: string;
+  schedule_mode: ScheduleMode;
+  custom_days: number[];
+  break_enabled: boolean;
+  updated_at: string;
 };
 
 export type QuranProgress = {

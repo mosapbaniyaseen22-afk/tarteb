@@ -3,7 +3,10 @@ import type {
   Note,
   Profile,
   QuranProgress,
+  Routine,
+  SchedulePreferences,
   ScheduleEntry,
+  ScheduleTemplateBlock,
   StudySession,
   QuizAttempt,
   Task,
@@ -20,6 +23,9 @@ const SCHEDULE_KEY = 'labib-schedule';
 const AI_KEY = 'labib-ai';
 const SESSIONS_KEY = 'labib-sessions';
 const QUIZ_KEY = 'labib-quiz-attempts';
+const ROUTINES_KEY = 'labib-routines';
+const SCHEDULE_PREFS_KEY = 'labib-schedule-preferences';
+const TEMPLATES_KEY = 'labib-schedule-templates';
 
 const ALL_KEYS = [
   PROFILE_STORAGE_KEY,
@@ -32,6 +38,9 @@ const ALL_KEYS = [
   AI_KEY,
   SESSIONS_KEY,
   QUIZ_KEY,
+  ROUTINES_KEY,
+  SCHEDULE_PREFS_KEY,
+  TEMPLATES_KEY,
 ];
 
 const SUBJECT_META: Record<string, { id: string; color: string; name: string }> = {
@@ -234,6 +243,52 @@ export const guestStore = {
       SCHEDULE_KEY,
       readJson<ScheduleEntry[]>(SCHEDULE_KEY, []).filter((item) => item.id !== id),
     );
+  },
+
+  getRoutines(): Routine[] {
+    return readJson<Routine[]>(ROUTINES_KEY, []).sort((a, b) => a.start_time.localeCompare(b.start_time));
+  },
+  addRoutine(routine: Omit<Routine, 'id' | 'created_at'>): Routine {
+    const next: Routine = { ...routine, id: newId('routine'), created_at: new Date().toISOString() };
+    writeJson(ROUTINES_KEY, [...readJson<Routine[]>(ROUTINES_KEY, []), next]);
+    return next;
+  },
+  deleteRoutine(id: string) {
+    writeJson(ROUTINES_KEY, readJson<Routine[]>(ROUTINES_KEY, []).filter((item) => item.id !== id));
+  },
+
+  getPreferences(userId: string): SchedulePreferences | null {
+    return readJson<SchedulePreferences[]>(SCHEDULE_PREFS_KEY, []).find((item) => item.user_id === userId) ?? null;
+  },
+  savePreferences(userId: string, patch: Partial<SchedulePreferences>): SchedulePreferences {
+    const rows = readJson<SchedulePreferences[]>(SCHEDULE_PREFS_KEY, []);
+    const existing = rows.find((item) => item.user_id === userId);
+    const next: SchedulePreferences = {
+      id: existing?.id ?? newId('prefs'),
+      user_id: userId,
+      wake_time: existing?.wake_time ?? '06:30',
+      sleep_time: existing?.sleep_time ?? '22:30',
+      notes: existing?.notes ?? '',
+      schedule_mode: existing?.schedule_mode ?? 'different',
+      custom_days: existing?.custom_days ?? [],
+      break_enabled: existing?.break_enabled ?? true,
+      updated_at: new Date().toISOString(),
+      ...patch,
+    };
+    writeJson(SCHEDULE_PREFS_KEY, [...rows.filter((item) => item.user_id !== userId), next]);
+    return next;
+  },
+
+  getTemplates(userId: string): ScheduleTemplateBlock[] {
+    return readJson<ScheduleTemplateBlock[]>(TEMPLATES_KEY, [])
+      .filter((item) => item.user_id === userId)
+      .sort((a, b) => a.weekday - b.weekday || a.sort_index - b.sort_index);
+  },
+  replaceWeekdayTemplate(userId: string, weekday: number, blocks: ScheduleTemplateBlock[]) {
+    const others = readJson<ScheduleTemplateBlock[]>(TEMPLATES_KEY, []).filter(
+      (item) => item.user_id !== userId || item.weekday !== weekday,
+    );
+    writeJson(TEMPLATES_KEY, [...others, ...blocks]);
   },
 
   getAiMessages(): AiConversation[] {

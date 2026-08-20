@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Moon } from 'lucide-react';
+import { Moon, Sun, Sunset } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -14,6 +14,14 @@ import {
 } from '@/lib/prayer-times';
 
 const PRAYERS: PrayerId[] = ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha'];
+
+const PRAYER_ICONS: Record<PrayerId, typeof Moon> = {
+  fajr: Moon,
+  dhuhr: Sun,
+  asr: Sun,
+  maghrib: Sunset,
+  isha: Moon,
+};
 
 function countdownLabel(minutesLeft: number) {
   const hours = Math.floor(minutesLeft / 60);
@@ -29,9 +37,10 @@ type PrayerTimesCardProps = {
   cityName: string;
   onCityChange: (city: string) => void;
   showNext?: boolean;
+  compact?: boolean;
 };
 
-export function PrayerTimesCard({ times, loading, error, cityName, onCityChange, showNext = true }: PrayerTimesCardProps) {
+export function PrayerTimesCard({ times, loading, error, cityName, onCityChange, showNext = true, compact = false }: PrayerTimesCardProps) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -40,6 +49,49 @@ export function PrayerTimesCard({ times, loading, error, cityName, onCityChange,
   }, []);
 
   const next = times ? getNextPrayer(times, now) : null;
+
+  if (compact) {
+    if (loading && !times) {
+      return (
+        <div className="flex justify-center py-3">
+          <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      );
+    }
+    if (!times) return null;
+    return (
+      <div className="space-y-2">
+        <div className="flex justify-end">
+          <Select value={cityName} onValueChange={onCityChange}>
+            <SelectTrigger className="h-8 w-28 rounded-lg text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {JORDAN_CITIES.map((city) => (
+                <SelectItem key={city.name} value={city.name}>{city.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid grid-cols-5 gap-1.5">
+          {PRAYERS.map((id) => {
+            const Icon = PRAYER_ICONS[id];
+            const active = Boolean(showNext && next?.id === id);
+            return (
+              <div
+                key={id}
+                className={`flex flex-col items-center gap-1 rounded-2xl px-1 py-2 text-center ${
+                  active ? 'gradient-primary text-white shadow-glow' : 'bg-accent/50'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5 opacity-80" />
+                <div className="text-[10px] opacity-80">{prayerLabel(id)}</div>
+                <div className="text-[11px] font-bold sm:text-xs">{formatPrayerClock(times[id])}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card className="rounded-3xl border-0 glass-card p-5 shadow-soft">

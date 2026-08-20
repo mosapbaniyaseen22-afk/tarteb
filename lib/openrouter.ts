@@ -5,13 +5,12 @@ export const GROQ_FREE_MODELS = [
 ] as const;
 
 export const OPENROUTER_FREE_MODELS = [
-  'google/gemma-4-26b-a4b-it:free',
-  'nvidia/nemotron-3.5-lightning:free',
-  'openrouter/free',
+  'z-ai/glm-5.2:free',
+  'nvidia/nemotron-3-ultra-550b-a55b:free',
 ] as const;
 
-export const LABIB_SYSTEM_PROMPT = `أنت لبيب، مساعد توجيهي أردني. أجب بالعربية باختصار ووضوح.
-اشرح الخطوات مباشرة مع مثال قصير. لا تختلق معلومات وزارية. لا تذكر اسم النموذج.`;
+export const LABIB_SYSTEM_PROMPT = `أنت لبيب، مساعد توجيهي أردني. أجب بالعربية بجمل قصيرة وسريعة.
+اشرح المطلوب مباشرة مع مثال واحد فقط. لا تختلق معلومات وزارية. لا تذكر اسم النموذج.`;
 
 export type ChatTurn = {
   role: 'user' | 'assistant';
@@ -139,11 +138,11 @@ async function startGroqStream(history: ChatTurn[], apiKey: string): Promise<Str
       {
         model,
         messages,
-        temperature: 0.4,
-        max_tokens: 700,
+        temperature: 0.3,
+        max_tokens: 450,
         stream: true,
       },
-      8000,
+      6000,
     );
     if (result.ok) return result;
     lastError = result.error;
@@ -154,34 +153,48 @@ async function startGroqStream(history: ChatTurn[], apiKey: string): Promise<Str
 }
 
 async function startOpenRouterStream(history: ChatTurn[], apiKey: string): Promise<StreamResult> {
-  const models = OPENROUTER_FREE_MODELS.slice(0, 3);
-  const [primary, ...fallbacks] = models;
-  if (!primary) {
-    return { ok: false, status: 502, error: 'لا يوجد نموذج مجاني متاح.' };
-  }
+  const messages = buildMessages(history);
+  const headers = {
+    'HTTP-Referer':
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      process.env.URL ||
+      process.env.DEPLOY_PRIME_URL ||
+      'http://localhost:3000',
+    'X-Title': 'Labib',
+  };
 
-  return streamFromEndpoint(
-    'https://openrouter.ai/api/v1/chat/completions',
-    apiKey,
-    {
-      'HTTP-Referer':
-        process.env.NEXT_PUBLIC_SITE_URL ||
-        process.env.URL ||
-        process.env.DEPLOY_PRIME_URL ||
-        'http://localhost:3000',
-      'X-Title': 'Labib',
-    },
-    {
-      model: primary,
-      models: fallbacks.slice(0, 2),
-      provider: { sort: 'latency', allow_fallbacks: true },
-      messages: buildMessages(history),
-      temperature: 0.4,
-      max_tokens: 700,
-      stream: true,
-    },
-    12000,
+  const attempts = OPENROUTER_FREE_MODELS.map((model) =>
+    streamFromEndpoint(
+      'https://openrouter.ai/api/v1/chat/completions',
+      apiKey,
+      headers,
+      {
+        model,
+        provider: { sort: 'latency', allow_fallbacks: true },
+        messages,
+        temperature: 0.3,
+        max_tokens: 450,
+        stream: true,
+      },
+      5500,
+    ),
   );
+
+  try {
+    return await Promise.any(
+      attempts.map(async (attempt) => {
+        const result = await attempt;
+        if (result.ok) return result;
+        throw result;
+      }),
+    );
+  } catch (error) {
+    const failed = error instanceof AggregateError ? error.errors[0] : error;
+    if (failed && typeof failed === 'object' && 'ok' in failed && failed.ok === false) {
+      return failed as StreamResult;
+    }
+    return { ok: false, status: 502, error: 'تعذر الوصول إلى النموذج المجاني.' };
+  }
 }
 
 export async function startLabibStream(history: ChatTurn[]): Promise<StreamResult> {

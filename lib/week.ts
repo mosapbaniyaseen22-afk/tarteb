@@ -8,8 +8,8 @@ export type WeekDay = {
   dayNumber: string;
 };
 
-const ARABIC_DAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
-const ARABIC_SHORT = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'] as const;
+export const ARABIC_DAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'] as const;
+export const ARABIC_SHORT = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'] as const;
 
 function parseISO(dateISO: string) {
   const [year, month, day] = dateISO.split('-').map(Number);
@@ -25,6 +25,23 @@ export function addDaysISO(dateISO: string, amount: number) {
 export function weekdayIndex(dateISO: string) {
   return parseISO(dateISO).getUTCDay();
 }
+
+export const WEEK_ORDER = [6, 0, 1, 2, 3, 4, 5] as const;
+
+export function upcomingWeekdayOnOrAfter(fromISO: string, weekday: number) {
+  const current = weekdayIndex(fromISO);
+  const delta = (weekday - current + 7) % 7;
+  return addDaysISO(fromISO, delta);
+}
+
+export function formatWeekdayList(indexes: number[]) {
+  const unique = [...new Set(indexes.filter((day) => day >= 0 && day <= 6))];
+  if (unique.length === 0 || unique.length === 7) return 'كل الأيام';
+  const saturdayFirst = [...unique].sort((a, b) => ((a + 1) % 7) - ((b + 1) % 7));
+  return saturdayFirst.map((day) => ARABIC_SHORT[day]).join('، ');
+}
+
+export const SCHOOL_WEEKDAYS = [0, 1, 2, 3, 4];
 
 export function saturdayOfWeek(dateISO: string) {
   const index = weekdayIndex(dateISO);
@@ -53,6 +70,12 @@ export function formatArabicDate(dateISO: string) {
     month: 'long',
     timeZone: 'UTC',
   }).format(date);
+}
+
+export function formatScheduleHeading(dateISO: string, dayName: string) {
+  const date = parseISO(dateISO);
+  const month = new Intl.DateTimeFormat('ar-JO', { month: 'short', timeZone: 'UTC' }).format(date);
+  return `${dayName} ${date.getUTCDate()} ${month}`;
 }
 
 export function formatWeekRange(days: WeekDay[]) {
