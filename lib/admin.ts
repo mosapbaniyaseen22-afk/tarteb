@@ -25,6 +25,8 @@ export type AppSubscriber = {
   firstSeenAt: string;
   lastSeenAt: string;
   loggedOutAt: string | null;
+  subscribed: boolean;
+  subscriptionExpiresAt: string | null;
 };
 
 export type SubscriberPresence = 'online' | 'logged_out' | 'away';
@@ -41,7 +43,11 @@ export function getSubscriberPresence(
   row: Pick<AppSubscriber, 'lastSeenAt' | 'loggedOutAt'>,
   now = Date.now(),
 ): SubscriberPresence {
-  if (row.loggedOutAt) return 'logged_out';
+  const loggedOut = row.loggedOutAt ? new Date(row.loggedOutAt).getTime() : NaN;
+  const seen = new Date(row.lastSeenAt).getTime();
+  if (Number.isFinite(loggedOut) && (!Number.isFinite(seen) || loggedOut >= seen)) {
+    return 'logged_out';
+  }
   if (isSubscriberOnline(row.lastSeenAt, now)) return 'online';
   return 'away';
 }

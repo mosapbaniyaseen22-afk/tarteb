@@ -28,7 +28,7 @@ import { getStageLabel } from '@/lib/utils';
 
 const EXAM_YEARS = Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + 1 - index));
 
-type UserListFilter = 'all' | 'online' | 'logged_out';
+type UserListFilter = 'all' | 'online' | 'subscribed' | 'logged_out';
 
 function formatSubscriberSeen(iso: string) {
   const seen = new Date(iso).getTime();
@@ -61,6 +61,8 @@ function filterSubscribers(rows: AppSubscriber[], filter: UserListFilter) {
       return rows;
     case 'online':
       return rows.filter((row) => getSubscriberPresence(row) === 'online');
+    case 'subscribed':
+      return rows.filter((row) => row.subscribed);
     case 'logged_out':
       return rows.filter((row) => getSubscriberPresence(row) === 'logged_out');
     default: {
@@ -73,9 +75,11 @@ function filterSubscribers(rows: AppSubscriber[], filter: UserListFilter) {
 function emptyUsersMessage(filter: UserListFilter) {
   switch (filter) {
     case 'all':
-      return 'لا يوجد مستخدمون ظاهرون بعد. يظهر الاسم هنا تلقائياً عندما يدخل الطالب للتطبيق.';
+      return 'لا يوجد مستخدمون ظاهرون بعد. يظهر الاسم هنا تلقائياً عندما يسجّل الطالب دخول.';
     case 'online':
-      return 'لا يوجد أحد متواجد الآن.';
+      return 'لا يوجد أحد متواجد الآن داخل التطبيق.';
+    case 'subscribed':
+      return 'لا يوجد مشتركون مفعّلون حالياً.';
     case 'logged_out':
       return 'لا يوجد من سجّل خروج بعد.';
     default: {
@@ -106,7 +110,7 @@ export default function AdminPage() {
   const [dragOver, setDragOver] = useState(false);
   const [ingestNotes, setIngestNotes] = useState<string[]>([]);
   const [subscribers, setSubscribers] = useState<AppSubscriber[]>([]);
-  const [usersOpen, setUsersOpen] = useState(false);
+  const [usersOpen, setUsersOpen] = useState(true);
   const [userFilter, setUserFilter] = useState<UserListFilter>('all');
 
   const refreshItems = async () => {
@@ -157,6 +161,10 @@ export default function AdminPage() {
 
   const onlineCount = useMemo(
     () => subscribers.filter((row) => getSubscriberPresence(row) === 'online').length,
+    [subscribers],
+  );
+  const subscribedCount = useMemo(
+    () => subscribers.filter((row) => row.subscribed).length,
     [subscribers],
   );
   const loggedOutCount = useMemo(
@@ -382,7 +390,7 @@ export default function AdminPage() {
               <div className="min-w-0">
                 <h2 className="text-xl font-bold">قائمة المستخدمين</h2>
                 <p className="truncate text-sm text-muted-foreground">
-                  {subscribers.length} مستخدم • {onlineCount} متواجد الآن • {loggedOutCount} سجّل خروج
+                  {subscribers.length} سجّل دخول • {subscribedCount} مشترك • {onlineCount} متواجد الآن
                 </p>
               </div>
             </div>
@@ -391,9 +399,10 @@ export default function AdminPage() {
 
           {usersOpen && (
             <div className="mt-5 space-y-4">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {([
-                  { id: 'all' as const, label: 'الكل', count: subscribers.length },
+                  { id: 'all' as const, label: 'سجّل دخول', count: subscribers.length },
+                  { id: 'subscribed' as const, label: 'مشترك', count: subscribedCount },
                   { id: 'online' as const, label: 'متواجد الآن', count: onlineCount },
                   { id: 'logged_out' as const, label: 'سجّل خروج', count: loggedOutCount },
                 ]).map((option) => (
@@ -437,7 +446,14 @@ export default function AdminPage() {
                           />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-semibold">{subscriber.name}</div>
+                          <div className="flex items-center gap-2">
+                            <div className="truncate font-semibold">{subscriber.name}</div>
+                            {subscriber.subscribed ? (
+                              <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                مشترك
+                              </span>
+                            ) : null}
+                          </div>
                           <div className="truncate text-xs text-muted-foreground">
                             {subscriber.stage ? getStageLabel(subscriber.stage) : 'طالب'}
                             {subscriber.email ? ` • ${subscriber.email}` : ''}

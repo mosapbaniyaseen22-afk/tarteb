@@ -1,5 +1,4 @@
 import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
 import {
   ADMIN_SUBJECT_OPTIONS,
   resourceTypeLabel,
@@ -293,18 +292,52 @@ export function parseQuestions(text: string): AdminQuestion[] {
 }
 
 async function extractPdf(buffer: Buffer) {
-  const parser = new PDFParse({ data: Uint8Array.from(buffer) });
   try {
-    const result = await parser.getText();
-    return compactSpaces((result.text || '').replace(/\n--\s*\d+\s+of\s+\d+\s*--\s*/gi, '\n'));
-  } finally {
-    await parser.destroy();
+    const { PDFParse } = await import('pdf-parse');
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      const result = await Promise.race([
+        parser.getText(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('pdf-timeout')), 12000);
+        }),
+      ]);
+      return compactSpaces((result.text || '').replace(/\n--\s*\d+\s+of\s+\d+\s*--\s*/gi, '\n'));
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  } catch (error) {
+    console.error('pdf extract failed', error);
+    return '';
   }
 }
 
 async function extractDocx(buffer: Buffer) {
-  const result = await mammoth.extractRawText({ buffer });
-  return compactSpaces(result.value || '');
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    return compactSpaces(result.value || '');
+  } catch (error) {
+    console.error('docx extract failed', error);
+    return '';
+  }
+}
+
+export function classifyFromFileName(fileName: string): IngestClassification {
+  const type = detectType(fileName, 0);
+  const subjectName = detectSubject(fileName);
+  const year = detectYear(fileName);
+  const title = titleFromFileName(fileName) || 'محتوى مرفوع';
+  return {
+    type,
+    subjectName,
+    title,
+    year,
+    description: `رُفع ${fileName}`,
+    extractedText: '',
+    questions: [],
+    scannedLikely: true,
+    placement: placementFor(type, subjectName),
+  };
 }
 
 export async function extractDocumentText(fileName: string, mime: string, buffer: Buffer) {

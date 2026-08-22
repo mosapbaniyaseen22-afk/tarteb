@@ -13,6 +13,8 @@ import {
 } from '@/lib/app-data';
 import { usePrayerTimes } from '@/lib/use-prayer-times';
 import { PrayerTimesCard } from '@/components/prayer-times-card';
+import { StudyPlanWizard } from '@/components/planner/study-plan-wizard';
+import { TimeWithPlanWizard } from '@/components/planner/time-with-plan-wizard';
 import { ScheduleWizard } from '@/components/schedule-wizard';
 import { ScheduleTimeline } from '@/components/schedule-timeline';
 import { timeToMinutes as prayerTimeToMinutes } from '@/lib/prayer-times';
@@ -27,10 +29,13 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
-  Sparkles, Clock, Plus, PieChart as PieChartIcon, ListChecks, Bot, CalendarDays, ChevronLeft, ChevronRight,
+  Sparkles, Clock, Plus, PieChart as PieChartIcon, ListChecks, Bot, CalendarDays, ChevronLeft, ChevronRight, Target, CalendarClock, Download,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import type { ScheduleEntry, ScheduleMode, UserSubject } from '@/lib/supabase';
+import type { StudyPlan } from '@/lib/study-plan';
+import { downloadStudyPlanPdf } from '@/lib/study-plan-pdf';
+import { guestStore } from '@/lib/guest-db';
 
 const ACTIVITY_COLORS: Record<string, string> = {
   wake: '#0F766E',
@@ -70,7 +75,11 @@ export default function SchedulerPage() {
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [planWizardOpen, setPlanWizardOpen] = useState(false);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
+  const [studyPlan, setStudyPlan] = useState<StudyPlan | null>(null);
   const [createdBanner, setCreatedBanner] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode | null>(null);
   const [customDays, setCustomDays] = useState<number[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -118,6 +127,11 @@ export default function SchedulerPage() {
   useEffect(() => {
     setSubjects(userSubjects);
   }, [userSubjects]);
+
+  useEffect(() => {
+    if (!user) return;
+    setStudyPlan(guestStore.getStudyPlan(user.id));
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -253,6 +267,19 @@ export default function SchedulerPage() {
     if (message) setCreatedBanner(message);
   };
 
+  const downloadPlanPdf = async () => {
+    if (!studyPlan) return;
+    setPdfBusy(true);
+    try {
+      await downloadStudyPlanPdf(studyPlan);
+      toast.success('تم تحميل الخطة PDF');
+    } catch {
+      toast.error('تعذر تحميل الملف');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const shiftWeek = (amount: number) => {
     const nextAnchor = addDaysISO(weekStart, amount * 7);
     const nextDays = getWeekDays(nextAnchor);
@@ -309,12 +336,12 @@ export default function SchedulerPage() {
   })();
 
   const wizardCta = scheduleMode === 'same'
-    ? 'إعادة تنظيم الأسبوع'
+    ? 'تعديل متقدم ليوم واحد'
     : scheduleMode === 'custom'
-      ? 'إعادة تنظيم الأيام المحددة'
-      : userBlocks.length === 0
-        ? `تنظيم يوم ${selectedDay.name}`
-        : 'إعادة تنظيم اليوم';
+      ? 'تعديل الأيام المحددة'
+      : 'تعديل متقدم لليوم';
+
+  const todayFocus = studyPlan?.weekDays.find((day) => day.weekday === weekdayIndex(selectedDate));
 
   const TasksTodayCard = (
     <Card className="rounded-3xl border-0 glass-card p-5 shadow-soft">
@@ -353,13 +380,93 @@ export default function SchedulerPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">تنظيم الوقت</h1>
-          <p className="text-sm text-muted-foreground">{modeHint}</p>
+          <p className="text-sm text-muted-foreground">خطتان مربوطتان: خطتك الدراسية، بعدين جدولك مع الالتزامات</p>
         </div>
-        <Button className="h-11 w-full rounded-xl gradient-primary shadow-glow sm:w-auto" onClick={() => setWizardOpen(true)}>
+        <Button variant="outline" className="h-11 w-full rounded-xl sm:w-auto" onClick={() => setWizardOpen(true)}>
           <Sparkles className="h-4 w-4" />
           {wizardCta}
         </Button>
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-stretch">
+        <button
+          type="button"
+          onClick={() => setPlanWizardOpen(true)}
+          className="rounded-3xl glass-card p-5 text-right shadow-soft transition hover:scale-[1.01]"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl gradient-primary text-sm font-bold text-white">1</div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 font-bold">
+                <Target className="h-4 w-4 text-primary" />
+                عمل خطة دراسة
+              </div>
+              {studyPlan ? (
+                <>
+                  <p className="mt-1 truncate text-sm">{studyPlan.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    جدول متكرر · {studyPlan.hoursPerDay} ساعات يومياً · هدف {studyPlan.targetAverage}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">جدول لكل أيام الأسبوع ويتكرر لوحده. بعدين نسألك عن ساعاتك وموادك وهدفك.</p>
+              )}
+            </div>
+          </div>
+        </button>
+        <div className="hidden items-center justify-center text-xs font-semibold text-muted-foreground sm:flex">بعدين</div>
+        <button
+          type="button"
+          disabled={!studyPlan}
+          onClick={() => setOrganizeOpen(true)}
+          className={`rounded-3xl p-5 text-right shadow-soft transition ${
+            studyPlan ? 'glass-card hover:scale-[1.01]' : 'bg-muted/40 text-muted-foreground'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${
+              studyPlan ? 'gradient-primary text-white' : 'bg-muted'
+            }`}>2</div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 font-bold">
+                <CalendarClock className="h-4 w-4 text-primary" />
+                نظّم وقتك مع خطتك
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {studyPlan
+                  ? 'أضف المدرسة والمركز والنادي، ونولّد الجدول النهائي المتكرر'
+                  : 'بعد ما تخلص الخطة، رتب التزاماتك وولّد الجدول'}
+              </p>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      {studyPlan ? (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            className="h-11 w-full rounded-2xl sm:w-auto"
+            disabled={pdfBusy}
+            onClick={() => void downloadPlanPdf()}
+          >
+            <Download className="h-4 w-4" />
+            {pdfBusy ? 'جارٍ تجهيز الملف...' : 'تحميل الخطة PDF'}
+          </Button>
+        </div>
+      ) : null}
+
+      {todayFocus ? (
+        <Card className="rounded-3xl border-0 bg-primary/8 p-4 shadow-soft">
+          <p className="text-xs font-semibold text-primary">تركيز {selectedDay?.name}</p>
+          <p className="mt-1 font-semibold">
+            {studyPlan?.focusSubjects && studyPlan.focusSubjects.length > 0
+              ? `كل المواد، مع تركيز على ${studyPlan.focusSubjects.join(' و ')}`
+              : 'كل المواد اليوم'}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{todayFocus.note}</p>
+        </Card>
+      ) : null}
 
       {createdBanner && (
         <div className="flex items-center gap-2 rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -370,7 +477,10 @@ export default function SchedulerPage() {
 
       <div>
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
-          <span className="text-sm font-semibold">أيام الأسبوع</span>
+          <div>
+            <span className="text-sm font-semibold">أيام الأسبوع</span>
+            <p className="text-[11px] text-muted-foreground">{modeHint}</p>
+          </div>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -458,15 +568,18 @@ export default function SchedulerPage() {
                   <Clock className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />
                   <h3 className="font-semibold">لا يوجد جدول ليوم {selectedDay.name}</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {scheduleMode === 'same'
-                      ? 'الجدول المكرر محفوظ ويتكرر كل أسبوع. اضغطي إعادة التنظيم إذا بدك تغيّريه'
-                      : scheduleMode === 'custom'
-                        ? 'ضمّي هذا اليوم مع أيام ثانية من خيار مخصص حتى يتكرر كل أسبوع'
-                        : 'خصّصي جدول هذا اليوم فقط، أو اختاري جدولاً مكرراً أو مخصصاً حتى ينحفظ'}
+                    {studyPlan
+                      ? 'ولّد الجدول من خطتك مع المدرسة والمركز والنادي'
+                      : scheduleMode === 'same'
+                        ? 'الجدول المكرر محفوظ ويتكرر كل أسبوع. اضغط إعادة التنظيم إذا بدك تغيّره'
+                        : 'ابدأ بخطة دراسة، بعدين نظّم وقتك معها'}
                   </p>
-                  <Button className="mt-4 rounded-xl gradient-primary" onClick={() => setWizardOpen(true)}>
+                  <Button
+                    className="mt-4 rounded-xl gradient-primary"
+                    onClick={() => (studyPlan ? setOrganizeOpen(true) : setPlanWizardOpen(true))}
+                  >
                     <Sparkles className="h-4 w-4" />
-                    {scheduleMode === 'same' ? 'تطبيق الجدول المكرر' : `خصّصي يوم ${selectedDay.name}`}
+                    {studyPlan ? 'نظّم وقتك مع خطتك' : 'عمل خطة دراسة'}
                   </Button>
                 </div>
               ) : (
@@ -551,17 +664,40 @@ export default function SchedulerPage() {
       </div>
 
       {user && (
-        <ScheduleWizard
-          open={wizardOpen}
-          onOpenChange={setWizardOpen}
-          userId={user.id}
-          selectedDate={selectedDate}
-          selectedDayName={selectedDay.name}
-          weekDays={weekDays}
-          prayerTimes={times}
-          userSubjects={subjects}
-          onFinished={onWizardFinished}
-        />
+        <>
+          <StudyPlanWizard
+            open={planWizardOpen}
+            onOpenChange={setPlanWizardOpen}
+            userId={user.id}
+            studentName={profile?.full_name ?? 'الطالب'}
+            userSubjects={subjects}
+            onCreated={setStudyPlan}
+            onOrganize={(plan) => {
+              setStudyPlan(plan);
+              setOrganizeOpen(true);
+            }}
+          />
+          <TimeWithPlanWizard
+            open={organizeOpen}
+            onOpenChange={setOrganizeOpen}
+            userId={user.id}
+            plan={studyPlan}
+            prayerTimes={times}
+            userSubjects={subjects}
+            onFinished={onWizardFinished}
+          />
+          <ScheduleWizard
+            open={wizardOpen}
+            onOpenChange={setWizardOpen}
+            userId={user.id}
+            selectedDate={selectedDate}
+            selectedDayName={selectedDay.name}
+            weekDays={weekDays}
+            prayerTimes={times}
+            userSubjects={subjects}
+            onFinished={onWizardFinished}
+          />
+        </>
       )}
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>

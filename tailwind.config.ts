@@ -22,6 +22,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-cairo)', 'system-ui', 'sans-serif'],
+        amiri: ['var(--font-amiri)', 'Amiri', 'serif'],
       },
       colors: {
         background: 'hsl(var(--background))',
@@ -90,12 +91,18 @@ const config: Config = {
           from: { opacity: '0', transform: 'scale(0.96)' },
           to: { opacity: '1', transform: 'scale(1)' },
         },
+        'tasbih-pop': {
+          '0%': { transform: 'scale(1)' },
+          '40%': { transform: 'scale(0.94)' },
+          '100%': { transform: 'scale(1)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-in': 'fade-in 0.4s ease-out',
         'scale-in': 'scale-in 0.3s ease-out',
+        'tasbih-pop': 'tasbih-pop 0.18s ease-out',
       },
     },
   },

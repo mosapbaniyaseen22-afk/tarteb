@@ -10,11 +10,12 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Home, BookOpen, ClipboardList,
-  Clock, Moon, Brain, User, BarChart3, Menu, X, Sun, LogOut, CircleHelp
+  Clock, Moon, Brain, User, BarChart3, Menu, X, Sun, LogOut, CircleHelp, NotebookPen
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { LabibLogo } from '@/components/labib-logo';
+import { LabibFloatChat } from '@/components/labib-float-chat';
 import { pingSubscriberPresence } from '@/lib/subscriber-presence';
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/exams', label: 'الامتحانات', icon: ClipboardList },
   { href: '/practice', label: 'اختبر نفسك', icon: CircleHelp },
   { href: '/scheduler', label: 'تنظيم الوقت', icon: Clock },
+  { href: '/journal', label: 'مذكراتي', icon: NotebookPen },
   { href: '/quran', label: 'ورد القرآن', icon: Moon },
   { href: '/ai', label: 'لبيب AI', icon: Brain },
   { href: '/statistics', label: 'الإحصائيات', icon: BarChart3 },
@@ -234,6 +236,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </div>
       </nav>
+      <LabibFloatChat />
     </div>
   );
 }

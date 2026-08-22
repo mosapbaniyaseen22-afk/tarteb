@@ -1,12 +1,13 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Cairo } from 'next/font/google';
+import { Cairo, Amiri } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth-context';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { Toaster as SonnerToaster } from '@/components/ui/sonner';
 
 const cairo = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-cairo' });
+const amiri = Amiri({ subsets: ['arabic', 'latin'], weight: ['400', '700'], variable: '--font-amiri' });
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -38,7 +39,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <body className={`${cairo.variable} font-sans antialiased`} suppressHydrationWarning>
+      <body className={`${cairo.variable} ${amiri.variable} font-sans antialiased`} suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <AuthProvider>
             {children}

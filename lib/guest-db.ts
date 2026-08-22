@@ -12,6 +12,7 @@ import type {
   Task,
   UserSubject,
 } from './supabase';
+import type { StudyPlan } from './study-plan';
 
 export const PROFILE_STORAGE_KEY = 'labib-profile';
 export const SUBJECTS_STORAGE_KEY = 'labib-user-subjects';
@@ -26,6 +27,7 @@ const QUIZ_KEY = 'labib-quiz-attempts';
 const ROUTINES_KEY = 'labib-routines';
 const SCHEDULE_PREFS_KEY = 'labib-schedule-preferences';
 const TEMPLATES_KEY = 'labib-schedule-templates';
+const STUDY_PLAN_KEY = 'labib-study-plan';
 
 const ALL_KEYS = [
   PROFILE_STORAGE_KEY,
@@ -41,10 +43,12 @@ const ALL_KEYS = [
   ROUTINES_KEY,
   SCHEDULE_PREFS_KEY,
   TEMPLATES_KEY,
+  STUDY_PLAN_KEY,
 ];
 
 const SUBJECT_META: Record<string, { id: string; color: string; name: string }> = {
   الرياضيات: { id: 'math', color: '#2563EB', name: 'Mathematics' },
+  رياضيات: { id: 'math', color: '#2563EB', name: 'Mathematics' },
   'اللغة العربية': { id: 'arabic', color: '#F59E0B', name: 'Arabic' },
   'التربية الإسلامية': { id: 'islamic', color: '#059669', name: 'Islamic Education' },
   'تاريخ الأردن': { id: 'jordan-history', color: '#D97706', name: 'Jordan History' },
@@ -113,10 +117,11 @@ export function buildUserSubjects(
       name,
     };
     return {
-      id: `us_${meta.id}`,
+      id: `us_${stage ?? 'year'}_${meta.id}`,
       user_id: userId,
       subject_id: meta.id,
       progress: 0,
+      stage: stage ?? 'tawjihi_first',
       subjects: {
         id: meta.id,
         name: meta.name,
@@ -175,11 +180,35 @@ export const guestStore = {
       .filter((note) => note.subject_id === subjectId)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
+  getJournalNotes(): Note[] {
+    return readJson<Note[]>(NOTES_KEY, [])
+      .filter((note) => !note.subject_id)
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  },
   addNote(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>): Note {
     const now = new Date().toISOString();
-    const next: Note = { ...note, id: newId('note'), created_at: now, updated_at: now };
+    const next: Note = {
+      ...note,
+      id: newId('note'),
+      mood: note.mood ?? null,
+      paper: note.paper ?? 'cream',
+      pinned: note.pinned ?? false,
+      created_at: now,
+      updated_at: now,
+    };
     writeJson(NOTES_KEY, [next, ...readJson<Note[]>(NOTES_KEY, [])]);
     return next;
+  },
+  updateNote(id: string, patch: Partial<Note>): Note | null {
+    const now = new Date().toISOString();
+    let updated: Note | null = null;
+    const next = readJson<Note[]>(NOTES_KEY, []).map((note) => {
+      if (note.id !== id) return note;
+      updated = { ...note, ...patch, updated_at: patch.updated_at ?? now };
+      return updated;
+    });
+    writeJson(NOTES_KEY, next);
+    return updated;
   },
   deleteNote(id: string) {
     writeJson(NOTES_KEY, readJson<Note[]>(NOTES_KEY, []).filter((note) => note.id !== id));
@@ -289,6 +318,15 @@ export const guestStore = {
       (item) => item.user_id !== userId || item.weekday !== weekday,
     );
     writeJson(TEMPLATES_KEY, [...others, ...blocks]);
+  },
+
+  getStudyPlan(userId: string): StudyPlan | null {
+    const rows = readJson<StudyPlan[]>(STUDY_PLAN_KEY, []);
+    return rows.find((item) => item.userId === userId) ?? null;
+  },
+  saveStudyPlan(plan: StudyPlan) {
+    const rows = readJson<StudyPlan[]>(STUDY_PLAN_KEY, []).filter((item) => item.userId !== plan.userId);
+    writeJson(STUDY_PLAN_KEY, [...rows, plan]);
   },
 
   getAiMessages(): AiConversation[] {

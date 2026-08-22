@@ -54,6 +54,7 @@ const localDatabase = {
       user_id: demoUserId,
       subject_id: 'math',
       progress: 0,
+      stage: 'tawjihi_first',
       subjects: defaultSubjects.find((s) => s.id === 'math'),
     },
   ],
@@ -374,6 +375,7 @@ export type UserSubject = {
   user_id: string;
   subject_id: string;
   progress: number;
+  stage: string;
   subjects: Subject;
 };
 
@@ -570,15 +572,64 @@ export type QuizAttempt = {
   created_at: string;
 };
 
+export type NoteMood = 'happy' | 'calm' | 'tired' | 'proud' | 'anxious' | 'motivated';
+export type NotePaper = 'cream' | 'sage' | 'rose' | 'sky' | 'lavender' | 'ink';
+
+export function normalizeNoteMood(value: string | null | undefined): NoteMood | null {
+  switch (value) {
+    case 'happy':
+    case 'calm':
+    case 'tired':
+    case 'proud':
+    case 'anxious':
+    case 'motivated':
+      return value;
+    default:
+      return null;
+  }
+}
+
+export function normalizeNotePaper(value: string | null | undefined): NotePaper {
+  switch (value) {
+    case 'cream':
+    case 'sage':
+    case 'rose':
+    case 'sky':
+    case 'lavender':
+    case 'ink':
+      return value;
+    default:
+      return 'cream';
+  }
+}
+
 export type Note = {
   id: string;
   user_id: string;
   subject_id: string | null;
   title: string;
   content: string;
+  mood: NoteMood | null;
+  paper: NotePaper;
+  pinned: boolean;
   created_at: string;
   updated_at: string;
 };
+
+export function normalizeNote(row: Partial<Note> & Pick<Note, 'id' | 'user_id' | 'title' | 'content' | 'created_at' | 'updated_at'>): Note {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    subject_id: row.subject_id ?? null,
+    title: row.title,
+    content: row.content,
+    mood: normalizeNoteMood(row.mood),
+    paper: normalizeNotePaper(row.paper),
+    pinned: Boolean(row.pinned),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
 
 export type AiConversation = {
   id: string;

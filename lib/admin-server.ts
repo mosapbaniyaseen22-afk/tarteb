@@ -216,6 +216,8 @@ function normalizeSubscriber(row: AppSubscriber): AppSubscriber {
   return {
     ...row,
     loggedOutAt: row.loggedOutAt ?? null,
+    subscribed: Boolean(row.subscribed),
+    subscriptionExpiresAt: row.subscriptionExpiresAt ?? null,
   };
 }
 
@@ -255,6 +257,8 @@ export async function upsertSubscriber(input: {
     firstSeenAt: existing?.firstSeenAt ?? now,
     lastSeenAt: now,
     loggedOutAt: null,
+    subscribed: existing?.subscribed ?? false,
+    subscriptionExpiresAt: existing?.subscriptionExpiresAt ?? null,
   };
 
   const updated = existing

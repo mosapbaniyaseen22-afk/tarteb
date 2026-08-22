@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { markCloudLoggedOut } from '@/lib/admin-cloud';
 import { markSubscriberLoggedOut } from '@/lib/admin-server';
 
 export const runtime = 'nodejs';
@@ -19,5 +20,10 @@ export async function POST(request: Request) {
   }
 
   const subscriber = await markSubscriberLoggedOut(user.id);
+  try {
+    await markCloudLoggedOut(token, user.id);
+  } catch (error) {
+    console.error(error);
+  }
   return NextResponse.json({ ok: true, subscriber });
 }

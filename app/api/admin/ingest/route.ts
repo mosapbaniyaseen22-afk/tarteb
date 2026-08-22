@@ -4,6 +4,7 @@ import type { AdminResource } from '@/lib/admin';
 import { getAdminSession, readResources, saveUpload, writeResources } from '@/lib/admin-server';
 import {
   classifyDocument,
+  classifyFromFileName,
   documentKindError,
   ingestSummary,
   isExtractableDocument,
@@ -49,12 +50,17 @@ export async function POST(request: Request) {
         buffer: bytes,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'تعذر استخراج الملف';
-      return NextResponse.json({ error: `${file.name}: ${message}` }, { status: 400 });
+      console.error(error);
+      classification = classifyFromFileName(file.name);
     }
 
     const id = randomBytes(12).toString('hex');
-    await saveUpload(id, bytes);
+    try {
+      await saveUpload(id, bytes);
+    } catch (error) {
+      console.error(error);
+      return NextResponse.json({ error: `تعذر حفظ الملف ${file.name}. حاول مرة أخرى.` }, { status: 500 });
+    }
 
     const item: AdminResource = {
       id,

@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/lib/auth-context';
 import { addAiMessage, loadAiMessages } from '@/lib/app-data';
+import { labibPageInfo } from '@/lib/labib-page';
+import { captureLabibScreen } from '@/lib/labib-screen';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +24,8 @@ const SUGGESTIONS = [
 
 export default function AiPage() {
   const { user } = useAuth();
+  const pathname = usePathname();
+  const page = labibPageInfo(pathname);
   const [messages, setMessages] = useState<AiConversation[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -58,9 +63,10 @@ export default function AiPage() {
     });
 
     try {
-      const [{ data }, userMsg] = await Promise.all([
+      const [{ data }, userMsg, screen] = await Promise.all([
         supabase.auth.getSession(),
         saveUser,
+        captureLabibScreen(),
       ]);
       if (userMsg) setMessages((prev) => [...prev, userMsg]);
 
@@ -76,6 +82,8 @@ export default function AiPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          page,
+          screen,
           messages: history.map((item) => ({ role: item.role, content: item.content })),
         }),
       });

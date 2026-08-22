@@ -25,6 +25,9 @@ export const ROUTINE_COLORS: Record<RoutineIcon, string> = {
 
 const PRIORITY_ORDER: Record<Task['priority'], number> = { high: 0, medium: 1, low: 2 };
 const BREAK_MINUTES = 10;
+const STUDY_SESSION_MINUTES = 50;
+const AFTER_SCHOOL_REST = 20;
+const WIND_DOWN_MINUTES = 30;
 const MERGE_WINDOW_MINUTES = 30;
 const MIN_GAP_MINUTES = 20;
 const MIN_STUDY_CHUNK_MINUTES = 15;
@@ -93,9 +96,11 @@ type Block = {
 };
 
 function routineAppliesOnDate(routine: Routine, date: string): boolean {
+  if (routine.weekdays && routine.weekdays.length > 0) {
+    return routine.weekdays.includes(weekdayIndex(date));
+  }
   if (!routineNeedsDays(routine.icon)) return true;
-  if (!routine.weekdays || routine.weekdays.length === 0) return true;
-  return routine.weekdays.includes(weekdayIndex(date));
+  return true;
 }
 
 function fixedBlocks(
@@ -125,15 +130,28 @@ function fixedBlocks(
   for (const routine of routines) {
     if (routine.icon === 'sleep') continue;
     if (!routineAppliesOnDate(routine, date)) continue;
+    const start = timeToMinutes(routine.start_time);
+    const end = timeToMinutes(routine.end_time);
     blocks.push({
-      start: timeToMinutes(routine.start_time),
-      end: timeToMinutes(routine.end_time),
+      start,
+      end,
       activity: routine.title,
       activity_type: routine.icon,
       color: ROUTINE_COLORS[routine.icon] ?? ROUTINE_COLORS.custom,
       subject_name: null,
       task_id: null,
     });
+    if (routine.icon === 'school' && end + AFTER_SCHOOL_REST < sleep) {
+      blocks.push({
+        start: end,
+        end: end + AFTER_SCHOOL_REST,
+        activity: 'راحة واستعادة طاقة',
+        activity_type: 'break',
+        color: '#F59E0B',
+        subject_name: null,
+        task_id: null,
+      });
+    }
   }
 
   if (prayerTimes) {
@@ -153,6 +171,18 @@ function fixedBlocks(
     }
   }
 
+  const windDownStart = sleep - WIND_DOWN_MINUTES;
+  if (windDownStart > wake + 60) {
+    blocks.push({
+      start: windDownStart,
+      end: sleep,
+      activity: 'تهدئة بدون شاشات',
+      activity_type: 'break',
+      color: '#64748B',
+      subject_name: null,
+      task_id: null,
+    });
+  }
   blocks.push({ start: sleep, end: sleep + 15, activity: sleepRoutine?.title || 'النوم', activity_type: 'sleep', color: '#1E293B', subject_name: null, task_id: null });
 
   blocks.sort((a, b) => a.start - b.start);
@@ -224,7 +254,8 @@ function fillGapsWithTasks(
     }
 
     while (remaining >= MIN_STUDY_CHUNK_MINUTES) {
-      const placed = placeDuration(gaps, remaining, false, true);
+      const chunk = Math.min(remaining, STUDY_SESSION_MINUTES);
+      const placed = placeDuration(gaps, chunk, false, true);
       if (!placed) break;
       pushTaskBlock(task, placed.start, placed.end, kind);
       remaining -= placed.end - placed.start;

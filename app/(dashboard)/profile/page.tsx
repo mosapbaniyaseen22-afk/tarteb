@@ -9,23 +9,29 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { getStageLabel, getFieldLabel } from '@/lib/utils';
+import { getStageLabel, getFieldLabel, normalizeTawjihiStage } from '@/lib/utils';
 import { averageProgress, completedQuizCount, studyHoursValue, subjectProgressPercent, totalStudyMinutes } from '@/lib/user-stats';
 import { toast } from 'sonner';
 import {
   User, MapPin, GraduationCap, Calendar, BookOpen, Trophy,
-  Award, TrendingUp, CircleHelp, Clock, Star, LogOut
+  Award, TrendingUp, CircleHelp, Clock, Star, LogOut, Pencil
 } from 'lucide-react';
 import type { UserSubject, QuizAttempt, StudySession } from '@/lib/supabase';
 import { StudentSubscriptionCard } from '@/components/student-subscription-card';
+import { SecondYearEnrollmentDialog } from '@/components/second-year-enrollment-dialog';
+import { EditStudyFieldDialog } from '@/components/edit-study-field-dialog';
+import { YearAccountSwitch } from '@/components/year-account-switch';
 
 export default function ProfilePage() {
-  const { user, profile, userSubjects, signOut } = useAuth();
+  const { user, profile, userSubjects, signOut, enrolledStages, switchStage } = useAuth();
   const router = useRouter();
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [secondYearOpen, setSecondYearOpen] = useState(false);
+  const [fieldOpen, setFieldOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -63,6 +69,34 @@ export default function ProfilePage() {
   ];
 
   const initials = (profile?.full_name || user?.full_name || 'طالب').charAt(0);
+  const hasSecondYear = enrolledStages.includes('tawjihi_second');
+  const activeStage = normalizeTawjihiStage(profile?.stage);
+
+  const handleSwitchYear = async (stage: 'tawjihi_first' | 'tawjihi_second') => {
+    if (stage === activeStage) return;
+    setSwitching(true);
+    try {
+      await switchStage(stage);
+      const message = (() => {
+        switch (stage) {
+          case 'tawjihi_second':
+            return 'تم التبديل لحساب السنة الثانية';
+          case 'tawjihi_first':
+            return 'تم التبديل لحساب السنة الأولى';
+          default: {
+            const exhaustive: never = stage;
+            return exhaustive;
+          }
+        }
+      })();
+      toast.success(message);
+    } catch (error) {
+      console.error(error);
+      toast.error('تعذر تبديل السنة');
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -85,21 +119,52 @@ export default function ProfilePage() {
                 {profile?.tawjihi_year && <Badge variant="secondary" className="rounded-full">توجيهي {profile.tawjihi_year}</Badge>}
               </div>
             </div>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                await signOut();
-                toast.success('تم تسجيل الخروج');
-                router.push('/');
-              }}
-              className="rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
-            >
-              <LogOut className="h-4 w-4" />
-              تسجيل الخروج
-            </Button>
+            <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await signOut();
+                  toast.success('تم تسجيل الخروج');
+                  router.push('/');
+                }}
+                className="rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut className="h-4 w-4" />
+                تسجيل الخروج
+              </Button>
+              {hasSecondYear ? (
+                <YearAccountSwitch
+                  activeStage={profile?.stage ?? null}
+                  disabled={switching}
+                  onSwitch={(stage) => {
+                    void handleSwitchYear(stage);
+                  }}
+                />
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => setSecondYearOpen(true)}
+                  className="rounded-xl"
+                >
+                  <GraduationCap className="h-4 w-4" />
+                  التسجيل سنة ثانية توجيهي
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => setFieldOpen(true)}
+                className="rounded-xl"
+              >
+                <Pencil className="h-4 w-4" />
+                {profile?.study_field ? 'تعديل الحقل' : 'اختيار الحقل'}
+              </Button>
+            </div>
           </div>
         </Card>
       </motion.div>
+
+      <SecondYearEnrollmentDialog open={secondYearOpen} onOpenChange={setSecondYearOpen} />
+      <EditStudyFieldDialog open={fieldOpen} onOpenChange={setFieldOpen} />
 
       <StudentSubscriptionCard />
 

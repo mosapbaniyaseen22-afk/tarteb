@@ -4,16 +4,13 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { isReturningStudent, useAuth } from '@/lib/auth-context';
-import { REGIONS, STUDY_FIELDS, FIELD_SUBJECTS } from '@/lib/utils';
+import { REGIONS, STUDY_FIELDS, FIELD_SUBJECTS, FIRST_YEAR_SUBJECTS } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ChevronLeft, ChevronRight, Check, User, GraduationCap, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { LabibLogo } from '@/components/labib-logo';
-
-
-const FIRST_YEAR_SUBJECTS = ['الرياضيات', 'اللغة العربية', 'التربية الإسلامية', 'تاريخ الأردن'];
 
 export default function OnboardingPage() {
   const { user, profile, userSubjects, loading, profileLoaded, saveProfile, saveSubjects } = useAuth();

@@ -5,6 +5,27 @@ import { startLabibStream, type ChatTurn } from '@/lib/openrouter';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function readScreen(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { text?: unknown; image?: unknown };
+  const text = typeof row.text === 'string' ? row.text.trim().slice(0, 4500) : '';
+  const image = typeof row.image === 'string' && row.image.startsWith('data:image/') && row.image.length < 500_000
+    ? row.image
+    : null;
+  if (!text && !image) return null;
+  return { text, image };
+}
+
+function readPage(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { path?: unknown; title?: unknown; hint?: unknown };
+  const path = typeof row.path === 'string' ? row.path.trim().slice(0, 120) : '';
+  const title = typeof row.title === 'string' ? row.title.trim().slice(0, 80) : '';
+  const hint = typeof row.hint === 'string' ? row.hint.trim().slice(0, 160) : '';
+  if (!path || !title) return null;
+  return { path, title, hint };
+}
+
 function readTurns(value: unknown): ChatTurn[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -27,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
   }
 
-  let body: { messages?: unknown } = {};
+  let body: { messages?: unknown; page?: unknown; screen?: unknown } = {};
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -39,7 +60,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'اكتب سؤالاً أولاً' }, { status: 400 });
   }
 
-  const result = await startLabibStream(messages);
+  const page = readPage(body.page);
+  const screen = readScreen(body.screen);
+  const result = await startLabibStream(messages, page, screen);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

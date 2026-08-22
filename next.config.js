@@ -7,6 +7,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: { unoptimized: true },
+  serverExternalPackages: ['pdf-parse', 'mammoth', 'pdfjs-dist'],
   experimental: {
     serverComponentsExternalPackages: ['pdf-parse', 'mammoth', 'pdfjs-dist'],
   },

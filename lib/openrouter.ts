@@ -1,3 +1,5 @@
+import type { LabibPageContext } from './labib-page';
+
 export const GROQ_FREE_MODELS = [
   'llama-3.1-8b-instant',
   'openai/gpt-oss-20b',
@@ -9,7 +11,18 @@ export const OPENROUTER_FREE_MODELS = [
   'nvidia/nemotron-3-ultra-550b-a55b:free',
 ] as const;
 
-export const LABIB_SYSTEM_PROMPT = `أنت لبيب، مساعد توجيهي أردني. أجب بالعربية بجمل قصيرة وسريعة.
+export const OPENROUTER_VISION_MODELS = [
+  'openrouter/free',
+  'qwen/qwen2.5-vl-32b-instruct:free',
+  'google/gemini-2.0-flash-exp:free',
+] as const;
+
+export const GROQ_VISION_MODELS = [
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+] as const;
+
+export const LABIB_SYSTEM_PROMPT = `أنت لبيب، مساعد توجيهي أردني جالس جنب الطالب. أجب بالعربية بجمل قصيرة وواضحة.
+إذا وصلك نص الشاشة أو صورة منها، تكلم عن اللي ظاهر فعلاً: أزرار، مواد، أوقات، خطة، تحذيرات. لا تخترع عناصر غير موجودة.
 اشرح المطلوب مباشرة مع مثال واحد فقط. لا تختلق معلومات وزارية. لا تذكر اسم النموذج.`;
 
 export type ChatTurn = {
@@ -26,7 +39,25 @@ type StreamResult =
   | { ok: true; body: ReadableStream<Uint8Array> }
   | { ok: false; status: number; error: string };
 
-function buildMessages(history: ChatTurn[]) {
+export type LabibScreenPayload = {
+  text?: string;
+  image?: string | null;
+};
+
+type LlmContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+type LlmMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string | LlmContentPart[];
+};
+
+function buildMessages(
+  history: ChatTurn[],
+  page?: Pick<LabibPageContext, 'path' | 'title' | 'hint'> | null,
+  screen?: LabibScreenPayload | null,
+): LlmMessage[] {
   const trimmed = history
     .filter((item) => item.content.trim())
     .slice(-6)
@@ -35,10 +66,30 @@ function buildMessages(history: ChatTurn[]) {
       content: item.content.slice(0, 2000),
     }));
 
-  return [
-    { role: 'system' as const, content: LABIB_SYSTEM_PROMPT },
+  const title = page?.title?.trim().slice(0, 80) ?? '';
+  const hint = page?.hint?.trim().slice(0, 160) ?? '';
+  const screenText = screen?.text?.trim().slice(0, 3500) ?? '';
+  const hasImage = Boolean(screen?.image && screen.image.startsWith('data:image/'));
+
+  let system = LABIB_SYSTEM_PROMPT;
+  if (title) system += `\nالطالب الآن على صفحة «${title}». ${hint}`;
+  if (screenText) system += `\nهذا النص الظاهر على شاشته الآن:\n${screenText}`;
+  if (hasImage) system += '\nمعك صورة لقطة من الشاشة الحالية. علق على التفاصيل الظاهرة وتفاعل كرفيق دراسة.';
+
+  const messages: LlmMessage[] = [
+    { role: 'system', content: system },
     ...trimmed,
   ];
+
+  const last = messages[messages.length - 1];
+  if (hasImage && last && last.role === 'user' && typeof last.content === 'string' && screen?.image) {
+    last.content = [
+      { type: 'text', text: last.content },
+      { type: 'image_url', image_url: { url: screen.image } },
+    ];
+  }
+
+  return messages;
 }
 
 function toTokenStream(body: ReadableStream<Uint8Array>) {
@@ -126,11 +177,18 @@ async function streamFromEndpoint(
   }
 }
 
-async function startGroqStream(history: ChatTurn[], apiKey: string): Promise<StreamResult> {
-  const messages = buildMessages(history);
+async function startGroqStream(
+  history: ChatTurn[],
+  apiKey: string,
+  page?: Pick<LabibPageContext, 'path' | 'title' | 'hint'> | null,
+  screen?: LabibScreenPayload | null,
+  vision = false,
+): Promise<StreamResult> {
+  const messages = buildMessages(history, page, vision ? screen : { text: screen?.text, image: null });
+  const models = vision ? GROQ_VISION_MODELS : GROQ_FREE_MODELS;
   let lastError = 'تعذر الوصول إلى Groq.';
 
-  for (const model of GROQ_FREE_MODELS) {
+  for (const model of models) {
     const result = await streamFromEndpoint(
       'https://api.groq.com/openai/v1/chat/completions',
       apiKey,
@@ -139,10 +197,10 @@ async function startGroqStream(history: ChatTurn[], apiKey: string): Promise<Str
         model,
         messages,
         temperature: 0.3,
-        max_tokens: 450,
+        max_tokens: 500,
         stream: true,
       },
-      6000,
+      vision ? 12000 : 6000,
     );
     if (result.ok) return result;
     lastError = result.error;
@@ -152,8 +210,14 @@ async function startGroqStream(history: ChatTurn[], apiKey: string): Promise<Str
   return { ok: false, status: 502, error: lastError };
 }
 
-async function startOpenRouterStream(history: ChatTurn[], apiKey: string): Promise<StreamResult> {
-  const messages = buildMessages(history);
+async function startOpenRouterStream(
+  history: ChatTurn[],
+  apiKey: string,
+  page?: Pick<LabibPageContext, 'path' | 'title' | 'hint'> | null,
+  screen?: LabibScreenPayload | null,
+  vision = false,
+): Promise<StreamResult> {
+  const messages = buildMessages(history, page, vision ? screen : { text: screen?.text, image: null });
   const headers = {
     'HTTP-Referer':
       process.env.NEXT_PUBLIC_SITE_URL ||
@@ -162,8 +226,9 @@ async function startOpenRouterStream(history: ChatTurn[], apiKey: string): Promi
       'http://localhost:3000',
     'X-Title': 'Labib',
   };
+  const models = vision ? OPENROUTER_VISION_MODELS : OPENROUTER_FREE_MODELS;
 
-  const attempts = OPENROUTER_FREE_MODELS.map((model) =>
+  const attempts = models.map((model) =>
     streamFromEndpoint(
       'https://openrouter.ai/api/v1/chat/completions',
       apiKey,
@@ -173,10 +238,10 @@ async function startOpenRouterStream(history: ChatTurn[], apiKey: string): Promi
         provider: { sort: 'latency', allow_fallbacks: true },
         messages,
         temperature: 0.3,
-        max_tokens: 450,
+        max_tokens: 500,
         stream: true,
       },
-      5500,
+      vision ? 12000 : 5500,
     ),
   );
 
@@ -197,16 +262,29 @@ async function startOpenRouterStream(history: ChatTurn[], apiKey: string): Promi
   }
 }
 
-export async function startLabibStream(history: ChatTurn[]): Promise<StreamResult> {
+export async function startLabibStream(
+  history: ChatTurn[],
+  page?: Pick<LabibPageContext, 'path' | 'title' | 'hint'> | null,
+  screen?: LabibScreenPayload | null,
+): Promise<StreamResult> {
+  const hasImage = Boolean(screen?.image && screen.image.startsWith('data:image/'));
   const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  const groqKey = process.env.GROQ_API_KEY?.trim();
+
+  if (hasImage && openRouterKey) {
+    const vision = await startOpenRouterStream(history, openRouterKey, page, screen, true);
+    if (vision.ok) return vision;
+  }
+  if (hasImage && groqKey) {
+    const vision = await startGroqStream(history, groqKey, page, screen, true);
+    if (vision.ok) return vision;
+  }
   if (openRouterKey) {
-    const openRouter = await startOpenRouterStream(history, openRouterKey);
+    const openRouter = await startOpenRouterStream(history, openRouterKey, page, screen, false);
     if (openRouter.ok) return openRouter;
   }
-
-  const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
-    return startGroqStream(history, groqKey);
+    return startGroqStream(history, groqKey, page, screen, false);
   }
 
   return {

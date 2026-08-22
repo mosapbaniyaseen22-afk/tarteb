@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
   BookOpen, FileText, Download, ClipboardList, Clock, Moon, Brain,
-  Sparkles, ChevronLeft, CircleHelp, BookMarked
+  Sparkles, ChevronLeft, CircleHelp, BookMarked, NotebookPen
 } from 'lucide-react';
 import { MotivationTicker } from '@/components/motivation-ticker';
 import { DashboardInsightCards } from '@/components/dashboard-insight-cards';
@@ -26,8 +26,9 @@ const quickActions = [
   { href: '/subjects', label: 'الدوسيات', icon: Download, color: '#F59E0B', desc: 'دوسيات جاهزة' },
   { href: '/exams', label: 'الامتحانات', icon: ClipboardList, color: '#8B5CF6', desc: 'وزارية ومقترحة' },
   { href: '/scheduler', label: 'تنظيم الوقت', icon: Clock, color: '#0EA5E9', desc: 'جدول ذكي' },
+  { href: '/journal', label: 'مذكراتي', icon: NotebookPen, color: '#B45309', desc: 'دفتر يوميات' },
   { href: '/practice', label: 'اختبر نفسك', icon: CircleHelp, color: '#22C55E', desc: 'تدريب على الأسئلة' },
-  { href: '/quran', label: 'ورد القرآن', icon: Moon, color: '#059669', desc: 'وردك اليومي' },
+  { href: '/quran', label: 'ورد القرآن', icon: Moon, color: '#059669', desc: 'قرآن وأذكار وتسبيح' },
   { href: '/ai', label: 'لبيب AI', icon: Brain, color: '#EC4899', desc: 'مساعدك الذكي' },
 ];
 

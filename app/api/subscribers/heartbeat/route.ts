@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { upsertCloudPresence } from '@/lib/admin-cloud';
 import { upsertSubscriber } from '@/lib/admin-server';
 
 export const runtime = 'nodejs';
@@ -37,6 +38,17 @@ export async function POST(request: Request) {
     avatarUrl: (body.avatarUrl || (meta.avatar_url as string | undefined) || (meta.picture as string | undefined) || null),
     stage: body.stage ?? null,
   });
+  try {
+    await upsertCloudPresence(token, {
+      id: subscriber.id,
+      name: subscriber.name,
+      email: subscriber.email,
+      avatarUrl: subscriber.avatarUrl,
+      stage: subscriber.stage,
+    });
+  } catch (error) {
+    console.error(error);
+  }
 
   return NextResponse.json({ ok: true, subscriber });
 }

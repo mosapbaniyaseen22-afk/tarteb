@@ -7,6 +7,7 @@ import type { Profile, UserSubject } from './supabase';
 import { googleAuthErrorMessage, signOutUser } from './firebase';
 import { PROFILE_STORAGE_KEY, buildUserSubjects, clearGuestData, guestStore } from './guest-db';
 import { markSubscriberLoggedOut, pingSubscriberPresence, resumeSubscriberPresence } from './subscriber-presence';
+import { FIRST_YEAR_SUBJECTS, normalizeTawjihiStage, pickCatalogSubjectIds, type TawjihiStage } from './utils';
 
 type AuthUser = {
   id: string;
@@ -19,6 +20,7 @@ type AuthContextType = {
   user: AuthUser | null;
   profile: Profile | null;
   userSubjects: UserSubject[];
+  allUserSubjects: UserSubject[];
   loading: boolean;
   signingIn: boolean;
   signInWithGoogle: (options?: { selectAccount?: boolean }) => Promise<void>;
@@ -29,6 +31,8 @@ type AuthContextType = {
   refreshProfile: () => Promise<void>;
   saveProfile: (profile: Profile) => Promise<void>;
   saveSubjects: (names: string[], stage?: string | null, field?: string | null) => Promise<UserSubject[]>;
+  enrolledStages: TawjihiStage[];
+  switchStage: (stage: TawjihiStage) => Promise<void>;
 };
 
 export { PROFILE_STORAGE_KEY, buildUserSubjects };
@@ -37,6 +41,26 @@ export function isReturningStudent(profile: Profile | null, subjects: UserSubjec
   if (profile?.onboarding_complete) return true;
   if (profile?.stage?.trim()) return true;
   return subjects.length > 0;
+}
+
+function tagSubjects(rows: UserSubject[], fallback: TawjihiStage): UserSubject[] {
+  return rows.map((row) => ({
+    ...row,
+    stage: normalizeTawjihiStage(row.stage, fallback),
+  }));
+}
+
+function stagesOf(rows: UserSubject[]): TawjihiStage[] {
+  const stages: TawjihiStage[] = [];
+  for (const row of rows) {
+    const stage = normalizeTawjihiStage(row.stage);
+    if (!stages.includes(stage)) stages.push(stage);
+  }
+  return stages;
+}
+
+function subjectsForStage(rows: UserSubject[], stage: TawjihiStage): UserSubject[] {
+  return rows.filter((row) => normalizeTawjihiStage(row.stage) === stage);
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -79,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userSubjects, setUserSubjects] = useState<UserSubject[]>([]);
+  const [allUserSubjects, setAllUserSubjects] = useState<UserSubject[]>([]);
   const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [profileLoaded, setProfileLoaded] = useState(false);
@@ -105,15 +130,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }).eq('id', userId);
       }
 
+      const fallbackStage = normalizeTawjihiStage(nextProfile?.stage);
+      const tagged = tagSubjects(nextSubjects, fallbackStage);
       setProfile(nextProfile);
       if (nextProfile) guestStore.setProfile(nextProfile);
-      setUserSubjects(nextSubjects);
-      if (nextSubjects.length) guestStore.setSubjects(nextSubjects);
+      setAllUserSubjects(tagged);
+      setUserSubjects(subjectsForStage(tagged, fallbackStage));
+      if (tagged.length) guestStore.setSubjects(tagged);
     } catch (err) {
       console.error(err);
       const guest = guestStore.getProfile();
       setProfile(guest?.id === userId ? guest : null);
-      setUserSubjects(guestStore.getSubjects().filter((item) => item.user_id === userId));
+      const guestRows = tagSubjects(
+        guestStore.getSubjects().filter((item) => item.user_id === userId),
+        normalizeTawjihiStage(guest?.stage),
+      );
+      setAllUserSubjects(guestRows);
+      setUserSubjects(subjectsForStage(guestRows, normalizeTawjihiStage(guest?.stage)));
     }
   };
 
@@ -217,34 +250,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const saveSubjects = async (names: string[], stage?: string | null, field?: string | null) => {
     if (!user) return [];
-
-    const local = buildUserSubjects(names, user.id, stage ?? profile?.stage ?? null, field ?? profile?.study_field ?? null);
-    guestStore.setSubjects(local);
+    const targetStage = normalizeTawjihiStage(stage ?? profile?.stage);
+    const local = buildUserSubjects(names, user.id, targetStage, field ?? profile?.study_field ?? null);
+    const others = guestStore
+      .getSubjects()
+      .filter((item) => item.user_id === user.id && normalizeTawjihiStage(item.stage) !== targetStage);
+    const mergedLocal = [...others, ...local];
+    guestStore.setSubjects(mergedLocal);
 
     const { data: catalog } = await supabase.from('subjects').select('*');
-    const matchedIds = (catalog ?? [])
-      .filter((subject) => names.includes((subject as { name_ar: string }).name_ar))
-      .map((subject) => (subject as { id: string }).id);
+    const matchedIds = pickCatalogSubjectIds(
+      (catalog ?? []) as { id: string; name_ar: string; stage?: string | null; field?: string | null }[],
+      names,
+      targetStage,
+      field ?? profile?.study_field ?? null,
+    );
 
     if (matchedIds.length > 0) {
-      await supabase.from('user_subjects').delete().eq('user_id', user.id);
+      await supabase.from('user_subjects').delete().eq('user_id', user.id).eq('stage', targetStage);
       const { error } = await supabase.from('user_subjects').insert(
-        matchedIds.map((subject_id) => ({ user_id: user.id, subject_id })),
+        matchedIds.map((subject_id) => ({ user_id: user.id, subject_id, stage: targetStage })),
       );
       if (error) {
         console.error(error);
-        setUserSubjects(local);
-        return local;
+        setAllUserSubjects(mergedLocal);
+        setUserSubjects(subjectsForStage(mergedLocal, normalizeTawjihiStage(profile?.stage, targetStage)));
+        return subjectsForStage(mergedLocal, targetStage);
       }
       const { data } = await supabase.from('user_subjects').select('*, subjects(*)').eq('user_id', user.id);
-      const next = (data as UserSubject[] | null) ?? local;
+      const next = tagSubjects((data as UserSubject[] | null) ?? mergedLocal, targetStage);
       guestStore.setSubjects(next);
-      setUserSubjects(next);
-      return next;
+      setAllUserSubjects(next);
+      setUserSubjects(subjectsForStage(next, normalizeTawjihiStage(profile?.stage, targetStage)));
+      return subjectsForStage(next, targetStage);
     }
 
-    setUserSubjects(local);
+    setAllUserSubjects(mergedLocal);
+    setUserSubjects(subjectsForStage(mergedLocal, normalizeTawjihiStage(profile?.stage, targetStage)));
     return local;
+  };
+
+  const switchStage = async (stage: TawjihiStage) => {
+    if (!user || !profile) return;
+    if (!stagesOf(allUserSubjects).includes(stage) && stage === 'tawjihi_first') {
+      await saveSubjects(FIRST_YEAR_SUBJECTS, 'tawjihi_first', profile.study_field);
+    }
+    const nextProfile = { ...profile, stage, updated_at: new Date().toISOString() };
+    await saveProfile(nextProfile);
+    const latest = tagSubjects(
+      guestStore.getSubjects().filter((item) => item.user_id === user.id),
+      stage,
+    );
+    setAllUserSubjects(latest);
+    setUserSubjects(subjectsForStage(latest, stage));
   };
 
   const signOut = async () => {
@@ -257,6 +315,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setUserSubjects([]);
+    setAllUserSubjects([]);
   };
 
   useEffect(() => {
@@ -269,6 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setProfile(null);
         setUserSubjects([]);
+        setAllUserSubjects([]);
         if (!cancelled && current === generation) {
           setProfileLoaded(true);
           setLoading(false);
@@ -317,6 +377,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         userSubjects,
+        allUserSubjects,
         loading,
         signingIn,
         profileLoaded,
@@ -327,6 +388,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshProfile,
         saveProfile,
         saveSubjects,
+        enrolledStages: stagesOf(allUserSubjects),
+        switchStage,
       }}
     >
       {children}

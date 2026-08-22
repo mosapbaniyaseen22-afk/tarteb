@@ -10,6 +10,8 @@ export const REGIONS = [
   'الكرك', 'الطفيلة', 'معان', 'العقبة',
 ];
 
+export const FIRST_YEAR_SUBJECTS = ['الرياضيات', 'اللغة العربية', 'التربية الإسلامية', 'تاريخ الأردن'];
+
 export const STUDY_FIELDS = [
   { id: 'medical', label: 'الطبي', icon: '🩺', color: '#059669', description: 'طب، صيدلة، طب أسنان، تمريض' },
   { id: 'engineering', label: 'الهندسة والتكنولوجيا', icon: '⚙️', color: '#2563EB', description: 'هندسة، حاسوب، تكنولوجيا' },
@@ -20,10 +22,10 @@ export const STUDY_FIELDS = [
 export const FIELD_SUBJECTS: Record<string, { core: string[]; electives: string[] }> = {
   medical: {
     core: ['أحياء', 'كيمياء', 'إنجليزي متقدم'],
-    electives: ['علوم أرض', 'فيزياء', 'رياضيات'],
+    electives: ['علوم أرض', 'فيزياء', 'الرياضيات'],
   },
   engineering: {
-    core: ['رياضيات', 'فيزياء', 'إنجليزي متقدم'],
+    core: ['الرياضيات', 'فيزياء', 'إنجليزي متقدم'],
     electives: ['أحياء', 'كيمياء', 'علوم أرض'],
   },
   business: {
@@ -41,6 +43,30 @@ export function getTawjihiYears(): number[] {
   return [currentYear, currentYear + 1, currentYear + 2];
 }
 
+export type TawjihiStage = 'tawjihi_first' | 'tawjihi_second';
+
+export function normalizeTawjihiStage(
+  value: string | null | undefined,
+  fallback: TawjihiStage = 'tawjihi_first',
+): TawjihiStage {
+  switch (value) {
+    case 'tawjihi_second':
+    case 'second_year':
+      return 'tawjihi_second';
+    case 'tawjihi_first':
+    case 'first_year':
+      return 'tawjihi_first';
+    case 'tawjihi':
+    case 'other':
+    case null:
+    case undefined:
+    case '':
+      return fallback;
+    default:
+      return fallback;
+  }
+}
+
 export function getStageLabel(stage: string): string {
   const labels: Record<string, string> = {
     tawjihi: 'التوجيهي',
@@ -51,6 +77,42 @@ export function getStageLabel(stage: string): string {
     other: 'أخرى',
   };
   return labels[stage] || stage;
+}
+
+type CatalogSubject = {
+  id: string;
+  name_ar: string;
+  stage?: string | null;
+  field?: string | null;
+};
+
+function subjectLabelKey(value: string): string {
+  return value.replace(/^ال/, '').replace(/\s+/g, '').trim();
+}
+
+export function subjectNamesMatch(left: string, right: string): boolean {
+  return left === right || subjectLabelKey(left) === subjectLabelKey(right);
+}
+
+export function pickCatalogSubjectIds(
+  catalog: CatalogSubject[],
+  names: string[],
+  stage: TawjihiStage,
+  field?: string | null,
+): string[] {
+  const ids: string[] = [];
+  for (const name of names) {
+    const matches = catalog.filter((subject) => subjectNamesMatch(subject.name_ar, name));
+    const preferred =
+      matches.find((subject) => normalizeTawjihiStage(subject.stage, stage) === stage && subject.field === field)
+      ?? matches.find((subject) => normalizeTawjihiStage(subject.stage, stage) === stage && (subject.field === 'all' || !subject.field))
+      ?? matches.find((subject) => normalizeTawjihiStage(subject.stage, stage) === stage)
+      ?? matches.find((subject) => Boolean(field) && subject.field === field)
+      ?? matches.find((subject) => subject.name_ar === name)
+      ?? matches[0];
+    if (preferred && !ids.includes(preferred.id)) ids.push(preferred.id);
+  }
+  return ids;
 }
 
 export function getFieldLabel(field: string): string {

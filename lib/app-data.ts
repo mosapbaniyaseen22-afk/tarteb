@@ -1,4 +1,4 @@
-import { supabase, normalizePreferences, normalizeTaskKind, normalizeWeekdays, repeatingWeekdays, weekdayUsesRepeatingTemplate } from './supabase';
+import { supabase, normalizeNote, normalizePreferences, normalizeTaskKind, normalizeWeekdays, repeatingWeekdays, weekdayUsesRepeatingTemplate } from './supabase';
 import { guestStore, newId, type Bookmark } from './guest-db';
 import { jordanDateISO } from './prayer-times';
 import { addDaysISO, weekdayIndex } from './week';
@@ -409,14 +409,67 @@ export async function loadNotes(userId: string, subjectId: string) {
     .eq('user_id', userId)
     .eq('subject_id', subjectId)
     .order('created_at', { ascending: false });
-  if (data) return data as Note[];
-  return guestStore.getNotes(subjectId);
+  if (data) return (data as Note[]).map(normalizeNote);
+  return guestStore.getNotes(subjectId).map(normalizeNote);
 }
 
-export async function addNote(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) {
-  const { data, error } = await supabase.from('notes').insert(note).select('*').single();
-  if (!error && data) return data as Note;
-  return guestStore.addNote(note);
+export async function loadJournalNotes(userId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+    if (!error && data) {
+      return (data as Note[])
+        .filter((note) => !note.subject_id)
+        .map(normalizeNote);
+    }
+  } catch {
+    // local supabase client does not chain select after some queries
+  }
+  return guestStore.getJournalNotes().map(normalizeNote);
+}
+
+export async function addNote(
+  note: Omit<Note, 'id' | 'created_at' | 'updated_at' | 'mood' | 'paper' | 'pinned'> & {
+    mood?: Note['mood'];
+    paper?: Note['paper'];
+    pinned?: boolean;
+  },
+) {
+  const payload = {
+    ...note,
+    mood: note.mood ?? null,
+    paper: note.paper ?? 'cream',
+    pinned: note.pinned ?? false,
+  };
+  try {
+    const { data, error } = await supabase.from('notes').insert(payload).select('*').single();
+    if (!error && data) return normalizeNote(data as Note);
+  } catch {
+    // fall through to guest store
+  }
+  return guestStore.addNote(payload);
+}
+
+export async function updateNote(
+  id: string,
+  patch: Partial<Pick<Note, 'title' | 'content' | 'mood' | 'paper' | 'pinned'>>,
+) {
+  const payload = { ...patch, updated_at: new Date().toISOString() };
+  try {
+    const { data, error } = await supabase.from('notes').update(payload).eq('id', id).select('*').single();
+    if (!error && data) {
+      const next = normalizeNote(data as Note);
+      guestStore.updateNote(id, next);
+      return next;
+    }
+  } catch {
+    // fall through to guest store
+  }
+  const local = guestStore.updateNote(id, payload);
+  return local ? normalizeNote(local) : null;
 }
 
 export async function deleteNote(id: string) {

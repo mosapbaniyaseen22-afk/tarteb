@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { remainingDays } from '@/lib/activation';
+import { upsertCloudSubscription } from '@/lib/admin-cloud';
 import { activateCodeForUser } from '@/lib/admin-server';
 import { getRequestAuthUser } from '@/lib/auth-request';
 
@@ -24,6 +25,16 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if (token) {
+    try {
+      await upsertCloudSubscription(token, result.subscription);
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   return NextResponse.json({
