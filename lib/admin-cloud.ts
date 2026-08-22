@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { isSubscriptionActive, type UserSubscription } from './activation';
-import type { AppSubscriber } from './admin';
+import { normalizeAdminResource, type AdminResource, type AppSubscriber } from './admin';
 import { isLocalSupabase } from './supabase';
 
 const LIST_SECRET = process.env.ADMIN_SESSION_SECRET || 'labib-admin-local-session';
@@ -152,4 +152,81 @@ export function mergeAppUsers(
   }
 
   return [...map.values()].sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
+}
+
+function asAdminResource(row: Record<string, unknown>): AdminResource {
+  return normalizeAdminResource({
+    id: String(row.id ?? ''),
+    type: (row.type as AdminResource['type']) ?? 'material',
+    title: String(row.title ?? 'محتوى'),
+    description: String(row.description ?? ''),
+    subjectName: String(row.subjectName ?? row.subject_name ?? 'الكل'),
+    year: (row.year as number | null | undefined) ?? (row.exam_year as number | null | undefined) ?? null,
+    stage: (row.stage as AdminResource['stage'] | undefined) ?? 'tawjihi_first',
+    fileName: (row.fileName as string | null | undefined) ?? (row.file_name as string | null | undefined) ?? null,
+    fileMime: (row.fileMime as string | null | undefined) ?? (row.file_mime as string | null | undefined) ?? null,
+    filePath: (row.filePath as string | null | undefined) ?? (row.file_path as string | null | undefined) ?? null,
+    fileUrl: (row.fileUrl as string | null | undefined) ?? (row.file_url as string | null | undefined) ?? null,
+    externalUrl: (row.externalUrl as string | null | undefined) ?? (row.external_url as string | null | undefined) ?? null,
+    extractedText: (row.extractedText as string | null | undefined) ?? (row.extracted_text as string | null | undefined) ?? null,
+    questions: Array.isArray(row.questions) ? row.questions as AdminResource['questions'] : [],
+    autoClassified: Boolean(row.autoClassified ?? row.auto_classified),
+    published: row.published !== false,
+    createdAt: String(row.createdAt ?? row.created_at ?? new Date().toISOString()),
+  });
+}
+
+export async function listCloudResources(): Promise<AdminResource[] | null> {
+  const client = cloudClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from('admin_resources')
+    .select('*')
+    .eq('published', true)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error(error);
+    return null;
+  }
+  return (data ?? []).map((row) => asAdminResource(row as Record<string, unknown>)).filter((row) => row.id);
+}
+
+export async function upsertCloudResource(item: AdminResource) {
+  const client = cloudClient();
+  if (!client) return;
+  const { error } = await client.rpc('admin_upsert_resource', {
+    p_secret: LIST_SECRET,
+    p_item: item,
+  });
+  if (error) console.error(error);
+}
+
+export async function deleteCloudResource(id: string, filePath?: string | null) {
+  const client = cloudClient();
+  if (!client) return;
+  const { error } = await client.rpc('admin_delete_resource', {
+    p_secret: LIST_SECRET,
+    p_id: id,
+  });
+  if (error) console.error(error);
+  if (filePath) {
+    await client.storage.from('admin-content').remove([filePath]).catch(() => undefined);
+  }
+}
+
+export async function uploadCloudFile(id: string, bytes: Buffer, mime: string, fileName: string) {
+  const client = cloudClient();
+  if (!client) return { filePath: null as string | null, fileUrl: null as string | null };
+  const safeName = fileName.replace(/[^\w.\-()\u0600-\u06FF]+/g, '_');
+  const path = `${id}/${safeName}`;
+  const { error } = await client.storage.from('admin-content').upload(path, bytes, {
+    contentType: mime || 'application/octet-stream',
+    upsert: true,
+  });
+  if (error) {
+    console.error(error);
+    return { filePath: null as string | null, fileUrl: null as string | null };
+  }
+  const { data } = client.storage.from('admin-content').getPublicUrl(path);
+  return { filePath: path, fileUrl: data.publicUrl as string };
 }

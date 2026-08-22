@@ -22,17 +22,18 @@ import { ResourceViewer } from '@/components/resource-viewer';
 import { subjectProgressPercent } from '@/lib/user-stats';
 import type { Subject, Note } from '@/lib/supabase';
 import {
-  adminFileUrl,
-  loadAdminResources,
+  resourceFileHref,
   resourceMatchesSubject,
   type AdminResource,
   type AdminResourceType,
 } from '@/lib/admin';
+import { useAdminResources } from '@/lib/use-admin-resources';
 
 export default function SubjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { user, userSubjects } = useAuth();
+  const { user, userSubjects, profile } = useAuth();
+  const { resources } = useAdminResources(profile?.stage);
   const [subject, setSubject] = useState<Subject | null>(null);
   const [progress, setProgress] = useState(0);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -40,7 +41,6 @@ export default function SubjectPage() {
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState('');
   const [newNoteTitle, setNewNoteTitle] = useState('');
-  const [resources, setResources] = useState<AdminResource[]>([]);
   const [viewerItem, setViewerItem] = useState<AdminResource | null>(null);
 
   useEffect(() => {
@@ -49,7 +49,6 @@ export default function SubjectPage() {
       try {
         const local = userSubjects.find((item) => item.subject_id === id) ?? guestStore.findSubject(id);
         if (local) setSubject(local.subjects);
-        setResources(await loadAdminResources());
         const attempts = user ? await loadQuizAttempts(user.id) : guestStore.getQuizAttempts();
         if (local) setProgress(subjectProgressPercent(local, attempts));
         if (user) {
@@ -129,9 +128,9 @@ export default function SubjectPage() {
               {item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
             </p>
           </div>
-          {item.fileName && (
+          {resourceFileHref(item) && (
             <a
-              href={adminFileUrl(item.id)}
+              href={resourceFileHref(item) ?? '#'}
               target="_blank"
               rel="noreferrer"
               className="rounded-xl p-2 hover:bg-accent"
@@ -243,7 +242,7 @@ export default function SubjectPage() {
 
         {/* Exams */}
         <TabsContent value="exams" className="space-y-3">
-          {renderResources(['ministerial_exam', 'suggested_exam'], ClipboardList, 'لا توجد امتحانات مرفوعة بعد', 'bg-destructive/10 text-destructive')}
+          {renderResources(['ministerial_exam', 'suggested_exam', 'electronic_exam'], ClipboardList, 'لا توجد امتحانات مرفوعة بعد', 'bg-destructive/10 text-destructive')}
         </TabsContent>
 
         <TabsContent value="questions" className="space-y-3">

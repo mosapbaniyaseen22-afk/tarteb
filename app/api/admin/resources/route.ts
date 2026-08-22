@@ -1,30 +1,18 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import type { AdminResource, AdminResourceType } from '@/lib/admin';
+import { isAdminResourceType, normalizeAdminResource, type AdminResource } from '@/lib/admin';
 import { getAdminSession, readResources, saveUpload, writeResources } from '@/lib/admin-server';
+import { uploadCloudFile } from '@/lib/admin-cloud';
 import { classifyDocument, isExtractableDocument } from '@/lib/document-ingest';
+import { normalizeTawjihiStage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const RESOURCE_TYPES: AdminResourceType[] = [
-  'material',
-  'summary',
-  'dossier',
-  'ministerial_exam',
-  'suggested_exam',
-  'questions',
-  'video',
-];
-
-function isResourceType(value: string): value is AdminResourceType {
-  return RESOURCE_TYPES.includes(value as AdminResourceType);
-}
-
 export async function GET() {
   const items = await readResources();
-  return NextResponse.json({ items });
+  return NextResponse.json({ items }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(request: Request) {
@@ -40,9 +28,10 @@ export async function POST(request: Request) {
   const subjectName = String(form.get('subjectName') || 'الكل').trim() || 'الكل';
   const yearRaw = String(form.get('year') || '').trim();
   const externalUrl = String(form.get('externalUrl') || '').trim();
+  const stage = normalizeTawjihiStage(String(form.get('stage') || 'tawjihi_first'));
   const file = form.get('file');
 
-  if (!isResourceType(typeValue)) {
+  if (!isAdminResourceType(typeValue)) {
     return NextResponse.json({ error: 'نوع المحتوى غير صالح' }, { status: 400 });
   }
   if (!title) {
@@ -59,10 +48,15 @@ export async function POST(request: Request) {
   const id = randomBytes(12).toString('hex');
   let extractedText: string | null = null;
   let questions: AdminResource['questions'] = [];
+  let filePath: string | null = null;
+  let fileUrl: string | null = null;
 
   if (uploaded) {
     const bytes = Buffer.from(await uploaded.arrayBuffer());
     await saveUpload(id, bytes);
+    const uploadedCloud = await uploadCloudFile(id, bytes, uploaded.type || 'application/octet-stream', uploaded.name);
+    filePath = uploadedCloud.filePath;
+    fileUrl = uploadedCloud.fileUrl;
     if (isExtractableDocument(uploaded.name, uploaded.type)) {
       try {
         const classified = await classifyDocument({
@@ -78,21 +72,25 @@ export async function POST(request: Request) {
     }
   }
 
-  const item: AdminResource = {
+  const item = normalizeAdminResource({
     id,
     type: typeValue,
     title,
     description,
     subjectName,
     year: Number.isFinite(year) ? year : null,
+    stage,
     fileName: uploaded?.name ?? null,
     fileMime: uploaded?.type || null,
+    filePath,
+    fileUrl,
     externalUrl: externalUrl || null,
     extractedText,
     questions,
     autoClassified: false,
+    published: true,
     createdAt: new Date().toISOString(),
-  };
+  });
 
   const items = await readResources();
   items.unshift(item);

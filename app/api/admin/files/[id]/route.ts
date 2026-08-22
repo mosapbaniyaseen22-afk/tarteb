@@ -8,15 +8,19 @@ export const dynamic = 'force-dynamic';
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const items = await readResources();
   const item = items.find((row) => row.id === params.id);
-  if (!item?.fileName) {
+  if (!item?.fileName && !item?.fileUrl) {
     return NextResponse.json({ error: 'الملف غير موجود' }, { status: 404 });
+  }
+
+  if (item.fileUrl) {
+    return NextResponse.redirect(item.fileUrl, 302);
   }
 
   try {
     const bytes = await readFile(uploadPath(params.id));
     const headers = new Headers();
     headers.set('Content-Type', item.fileMime || 'application/octet-stream');
-    headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(item.fileName)}`);
+    headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(item.fileName || 'file')}`);
     headers.set('Cache-Control', 'private, max-age=3600');
     return new NextResponse(Uint8Array.from(bytes), { headers });
   } catch {

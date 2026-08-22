@@ -2,7 +2,7 @@ import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
 import { cookies } from 'next/headers';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import path from 'path';
-import { ADMIN_EMAIL, type AdminResource, type AppSubscriber } from './admin';
+import { ADMIN_EMAIL, normalizeAdminResource, type AdminResource, type AppSubscriber } from './admin';
 import {
   ACTIVATION_CODE_PREFIX,
   ACTIVATION_DURATION_DAYS,
@@ -12,6 +12,7 @@ import {
   type ActivationCode,
   type UserSubscription,
 } from './activation';
+import { deleteCloudResource, listCloudResources, upsertCloudResource } from './admin-cloud';
 
 const AUTH_COOKIE = 'labib_admin';
 const DEFAULT_USERNAME = 'admin';
@@ -173,26 +174,65 @@ export async function changeAdminPassword(currentPassword: string, nextPassword:
   return { ok: true as const };
 }
 
-export async function readResources(): Promise<AdminResource[]> {
+async function readLocalResources(): Promise<AdminResource[]> {
   await ensureDataDir();
   try {
     const raw = await readFile(resourcesFilePath(), 'utf8');
     const parsed = JSON.parse(raw) as AdminResource[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.map((item) => ({
-      ...item,
-      extractedText: item.extractedText ?? null,
-      questions: Array.isArray(item.questions) ? item.questions : [],
-      autoClassified: Boolean(item.autoClassified),
-    }));
+    return parsed.map((item) => normalizeAdminResource(item));
   } catch {
     return [];
   }
 }
 
+function mergeResourceLists(cloud: AdminResource[], local: AdminResource[]) {
+  const map = new Map<string, AdminResource>();
+  local.forEach((item) => map.set(item.id, item));
+  cloud.forEach((item) => {
+    const prev = map.get(item.id);
+    if (!prev) {
+      map.set(item.id, item);
+      return;
+    }
+    map.set(item.id, {
+      ...prev,
+      ...item,
+      fileUrl: item.fileUrl || prev.fileUrl,
+      filePath: item.filePath || prev.filePath,
+      extractedText: item.extractedText || prev.extractedText,
+      questions: item.questions.length >= prev.questions.length ? item.questions : prev.questions,
+    });
+  });
+  return [...map.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+export async function readResources(): Promise<AdminResource[]> {
+  const local = await readLocalResources();
+  try {
+    const cloud = await listCloudResources();
+    if (cloud) return mergeResourceLists(cloud, local);
+  } catch (error) {
+    console.error(error);
+  }
+  return local;
+}
+
 export async function writeResources(items: AdminResource[]) {
   await ensureDataDir();
-  await writeFile(resourcesFilePath(), JSON.stringify(items, null, 2), 'utf8');
+  const normalized = items.map((item) => normalizeAdminResource(item));
+  await writeFile(resourcesFilePath(), JSON.stringify(normalized, null, 2), 'utf8');
+  await Promise.all(normalized.map((item) => upsertCloudResource(item)));
+}
+
+export async function deleteResource(id: string) {
+  const items = await readResources();
+  const current = items.find((item) => item.id === id);
+  const next = items.filter((item) => item.id !== id);
+  await ensureDataDir();
+  await writeFile(resourcesFilePath(), JSON.stringify(next, null, 2), 'utf8');
+  await deleteCloudResource(id, current?.filePath);
+  await deleteUpload(id);
 }
 
 export function uploadPath(id: string) {

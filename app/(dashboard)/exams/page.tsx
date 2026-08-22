@@ -7,25 +7,20 @@ import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ClipboardList, FileDown, Filter, Link as LinkIcon } from 'lucide-react';
 import { ResourceViewer } from '@/components/resource-viewer';
-import { adminFileUrl, loadAdminResources, resourceMatchesSubject, type AdminResource } from '@/lib/admin';
+import { resourceFileHref, resourceMatchesSubject, type AdminResource } from '@/lib/admin';
+import { useAdminResources } from '@/lib/use-admin-resources';
 import type { UserSubject } from '@/lib/supabase';
 
 export default function ExamsPage() {
-  const { userSubjects } = useAuth();
+  const { userSubjects, profile } = useAuth();
+  const { resources, loading } = useAdminResources(profile?.stage);
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
-  const [resources, setResources] = useState<AdminResource[]>([]);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
   const [viewerItem, setViewerItem] = useState<AdminResource | null>(null);
 
   useEffect(() => {
-    const load = async () => {
-      setSubjects(userSubjects);
-      setResources(await loadAdminResources());
-      setLoading(false);
-    };
-    void load();
+    setSubjects(userSubjects);
   }, [userSubjects]);
 
   const selectedSubjectName =
@@ -35,7 +30,7 @@ export default function ExamsPage() {
 
   const visible = useMemo(() => {
     return resources.filter((item) => {
-      const examType = item.type === 'ministerial_exam' || item.type === 'suggested_exam';
+      const examType = item.type === 'ministerial_exam' || item.type === 'suggested_exam' || item.type === 'electronic_exam';
       if (!examType) return false;
       if (selectedYear !== 'all' && String(item.year ?? '') !== selectedYear) return false;
       if (selectedSubjectName && !resourceMatchesSubject(item, selectedSubjectName)) return false;
@@ -54,6 +49,7 @@ export default function ExamsPage() {
 
   const ministerial = visible.filter((item) => item.type === 'ministerial_exam');
   const suggested = visible.filter((item) => item.type === 'suggested_exam');
+  const electronic = visible.filter((item) => item.type === 'electronic_exam');
 
   if (loading) {
     return <div className="flex min-h-[60vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
@@ -85,9 +81,9 @@ export default function ExamsPage() {
                   {item.subjectName}{item.year ? ` • ${item.year}` : ''}{item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
                 </p>
               </div>
-              {item.fileName && (
+              {item.fileName && resourceFileHref(item) && (
                 <a
-                  href={adminFileUrl(item.id)}
+                  href={resourceFileHref(item) ?? '#'}
                   target="_blank"
                   rel="noreferrer"
                   className="rounded-xl p-2 hover:bg-accent"
@@ -151,6 +147,11 @@ export default function ExamsPage() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">الامتحانات المقترحة</h2>
         {renderList(suggested, 'لا توجد امتحانات مقترحة بعد')}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">الامتحانات الإلكترونية</h2>
+        {renderList(electronic, 'لا توجد امتحانات إلكترونية بعد')}
       </section>
 
       <ResourceViewer item={viewerItem} open={Boolean(viewerItem)} onOpenChange={(open) => { if (!open) setViewerItem(null); }} />

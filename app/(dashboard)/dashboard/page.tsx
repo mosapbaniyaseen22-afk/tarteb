@@ -19,6 +19,8 @@ import { StudentSubscriptionCard } from '@/components/student-subscription-card'
 import { jordanDateISO } from '@/lib/prayer-times';
 import { subjectProgressPercent } from '@/lib/user-stats';
 import type { QuizAttempt, UserSubject, ScheduleEntry, StudySession } from '@/lib/supabase';
+import { resourceTypeLabel, type AdminResource } from '@/lib/admin';
+import { useAdminResources } from '@/lib/use-admin-resources';
 
 const quickActions = [
   { href: '/subjects', label: 'شرح المواد', icon: BookOpen, color: '#2563EB', desc: 'شروحات مفصلة' },
@@ -34,6 +36,7 @@ const quickActions = [
 
 export default function DashboardPage() {
   const { user, profile, userSubjects } = useAuth();
+  const { resources: published } = useAdminResources(profile?.stage);
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
   const [todaySchedule, setTodaySchedule] = useState<ScheduleEntry[]>([]);
@@ -95,6 +98,22 @@ export default function DashboardPage() {
       </motion.div>
 
       <StudentSubscriptionCard />
+
+      {published.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">جديد من لبيب</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {published.slice(0, 6).map((item: AdminResource) => (
+              <Link key={item.id} href={item.type === 'ministerial_exam' || item.type === 'suggested_exam' || item.type === 'electronic_exam' ? '/exams' : item.type === 'questions' ? '/practice' : '/subjects'}>
+                <Card className="rounded-2xl border-0 glass-card p-4 shadow-soft transition hover:-translate-y-0.5">
+                  <div className="text-xs text-muted-foreground">{resourceTypeLabel(item.type)} • {item.subjectName}</div>
+                  <div className="mt-1 font-semibold">{item.title}</div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <DashboardInsightCards
         tawjihiYear={profile?.tawjihi_year}

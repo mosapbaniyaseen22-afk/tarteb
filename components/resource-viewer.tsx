@@ -11,7 +11,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { adminFileUrl, resourceTypeLabel, type AdminResource } from '@/lib/admin';
+import { adminFileUrl, resourceFileHref, resourceTypeLabel, type AdminResource } from '@/lib/admin';
+import { questionsForResource } from '@/lib/practice';
 
 type ResourceViewerProps = {
   item: AdminResource | null;
@@ -20,17 +21,17 @@ type ResourceViewerProps = {
 };
 
 export function ResourceViewer({ item, open, onOpenChange }: ResourceViewerProps) {
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
 
-  const questions = item?.questions ?? [];
+  const questions = useMemo(() => (item ? questionsForResource(item) : []), [item]);
   const hasText = Boolean(item?.extractedText?.trim());
   const defaultTab = questions.length > 0 ? 'questions' : 'content';
 
   const score = useMemo(() => {
     const graded = questions.filter((question) => question.answerKey);
     if (graded.length === 0) return null;
-    const correct = graded.filter((question) => answers[question.number] === question.answerKey).length;
+    const correct = graded.filter((question, index) => answers[String(index)] === question.answerKey).length;
     return { correct, total: graded.length };
   }, [answers, questions]);
 
@@ -59,9 +60,9 @@ export function ResourceViewer({ item, open, onOpenChange }: ResourceViewerProps
             </DialogHeader>
 
             <div className="flex flex-wrap gap-2">
-              {item.fileName && (
+              {resourceFileHref(item) && (
                 <Button variant="outline" className="rounded-xl" asChild>
-                  <a href={adminFileUrl(item.id)} target="_blank" rel="noreferrer">
+                  <a href={resourceFileHref(item) ?? adminFileUrl(item.id)} target="_blank" rel="noreferrer">
                     <FileDown className="h-4 w-4" />
                     الملف الأصلي
                   </a>
@@ -99,10 +100,16 @@ export function ResourceViewer({ item, open, onOpenChange }: ResourceViewerProps
 
               {questions.length > 0 && (
                 <TabsContent value="questions" className="space-y-4">
-                  {questions.map((question) => {
-                    const selected = answers[question.number];
+                  {questions.map((question, index) => {
+                    const answerId = String(index);
+                    const selected = answers[answerId];
                     return (
-                      <div key={`${item.id}-${question.number}`} className="rounded-2xl border border-border/60 p-4">
+                      <div key={`${item.id}-${answerId}-${question.number}`} className="rounded-2xl border border-border/60 p-4">
+                        {(question.unit || question.lesson) && (
+                          <p className="mb-2 text-xs text-muted-foreground">
+                            {[question.unit, question.lesson].filter(Boolean).join(' • ')}
+                          </p>
+                        )}
                         <p className="font-medium">
                           {question.number}. {question.prompt}
                         </p>
@@ -117,7 +124,7 @@ export function ResourceViewer({ item, open, onOpenChange }: ResourceViewerProps
                                   key={option.key}
                                   type="button"
                                   disabled={submitted}
-                                  onClick={() => setAnswers((current) => ({ ...current, [question.number]: option.key }))}
+                                  onClick={() => setAnswers((current) => ({ ...current, [answerId]: option.key }))}
                                   className={`flex w-full rounded-xl border px-3 py-2 text-right text-sm transition ${
                                     isCorrect
                                       ? 'border-green-500 bg-green-500/10'

@@ -5,9 +5,9 @@ import {
   type AdminQuestion,
   type AdminResourceType,
 } from './admin';
+import { compactSpaces, parseQuestions } from './parse-questions';
 
 const MAX_TEXT_CHARS = 180000;
-const MAX_QUESTIONS = 150;
 
 const SUBJECT_ALIASES: { name: string; aliases: string[] }[] = [
   { name: 'رياضيات أعمال', aliases: ['رياضيات اعمال', 'رياضيات أعمال'] },
@@ -75,6 +75,11 @@ const TYPE_RULES: KeywordRule[] = [
     ],
   },
   {
+    type: 'electronic_exam',
+    weight: 7,
+    keywords: ['امتحان الكتروني', 'امتحان إلكتروني', 'اختبار الكتروني', 'اختبار إلكتروني'],
+  },
+  {
     type: 'summary',
     weight: 5,
     keywords: ['تلخيص', 'ملخص', 'مراجعه سريعه', 'مراجعة سريعة'],
@@ -136,10 +141,6 @@ function normalize(text: string) {
     .toLowerCase();
 }
 
-function compactSpaces(text: string) {
-  return text.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 function titleFromFileName(fileName: string) {
   return fileName.replace(/\.[^.]+$/, '').replace(/[_‐‑–—-]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -182,114 +183,7 @@ function detectType(haystack: string, questionCount: number): AdminResourceType 
   return best.type;
 }
 
-function optionKey(raw: string) {
-  const value = raw.trim();
-  if (/^[اأ]/.test(value)) return 'أ';
-  if (value.startsWith('ب')) return 'ب';
-  if (value.startsWith('ج')) return 'ج';
-  if (value.startsWith('د')) return 'د';
-  if (value.startsWith('ه')) return 'ه';
-  return value.toUpperCase();
-}
-
-function parseAnswerMap(lines: string[]) {
-  const answers = new Map<number, string>();
-  for (const line of lines) {
-    const match = line.match(/(?:س(?:ؤال)?\s*)?(\d{1,3})\s*[\-.:)）]\s*([أاببججددههA-Da-d1-4])/);
-    if (!match) continue;
-    answers.set(Number(match[1]), optionKey(match[2]));
-  }
-  return answers;
-}
-
-function splitInlineOptions(text: string) {
-  const matches = [...text.matchAll(/([أاببججددههA-Da-d])\s*[).\-]\s*/g)];
-  if (matches.length < 2) return { prompt: text.trim(), options: [] as AdminQuestion['options'] };
-
-  const firstIndex = matches[0].index ?? 0;
-  const prompt = text.slice(0, firstIndex).trim();
-  const options = matches.map((match, index) => {
-    const start = (match.index ?? 0) + match[0].length;
-    const end = index + 1 < matches.length ? (matches[index + 1].index ?? text.length) : text.length;
-    return {
-      key: optionKey(match[1]),
-      text: text.slice(start, end).trim(),
-    };
-  }).filter((option) => option.text.length > 0);
-
-  return { prompt: prompt || text.trim(), options };
-}
-
-export function parseQuestions(text: string): AdminQuestion[] {
-  const prepared = compactSpaces(text).replace(/(?<!\d)((?:س(?:ؤال)?\s*)?\d{1,3}\s*[\-.:)）])/g, '\n$1');
-  const lines = prepared
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  const answersStart = lines.findIndex((line) =>
-    /^(الإجاب[اتة]|نموذج\s*الإجاب|الإجابة\s*النموذجية|الحلول)/.test(line),
-  );
-  const body = answersStart >= 0 ? lines.slice(0, answersStart) : lines;
-  const answerMap = parseAnswerMap(answersStart >= 0 ? lines.slice(answersStart + 1) : []);
-
-  const questionStart = /^(?:س(?:ؤال)?\s*)?(\d{1,3})\s*[\-.:)）]\s*(.+)$/;
-  const optionStart = /^(?:\(?\s*)([أاببججددههA-Da-d])(?:\s*\)|\s*[\-.:])\s*(.+)$/;
-
-  const questions: AdminQuestion[] = [];
-  let current: AdminQuestion | null = null;
-
-  const pushCurrent = () => {
-    if (!current) return;
-    if (current.options.length < 2) {
-      const inline = splitInlineOptions(current.prompt);
-      current.prompt = inline.prompt;
-      if (inline.options.length >= 2) current.options = inline.options;
-    }
-    const prompt = current.prompt.trim();
-    if (prompt.length < 8) {
-      current = null;
-      return;
-    }
-    if (!current.answerKey) current.answerKey = answerMap.get(current.number) ?? null;
-    questions.push(current);
-    current = null;
-  };
-
-  for (const line of body) {
-    const questionMatch = line.match(questionStart);
-    const optionMatch = line.match(optionStart);
-
-    if (questionMatch && (!current || current.options.length > 0 || Number(questionMatch[1]) !== current.number)) {
-      pushCurrent();
-      current = {
-        number: Number(questionMatch[1]),
-        prompt: questionMatch[2].trim(),
-        options: [],
-        answerKey: answerMap.get(Number(questionMatch[1])) ?? null,
-      };
-      continue;
-    }
-
-    if (current && optionMatch) {
-      current.options.push({
-        key: optionKey(optionMatch[1]),
-        text: optionMatch[2].trim(),
-      });
-      continue;
-    }
-
-    if (current && !optionMatch && line.length > 3 && !/^[-_=*]{3,}$/.test(line)) {
-      current.prompt = `${current.prompt} ${line}`.trim();
-    }
-  }
-  pushCurrent();
-
-  const usable = questions.filter((item) => item.prompt.length >= 8).slice(0, MAX_QUESTIONS);
-  const hasStructured = usable.some((item) => item.options.length >= 2);
-  if (usable.length >= 3 || hasStructured) return usable;
-  return [];
-}
+export { parseQuestions };
 
 async function extractPdf(buffer: Buffer) {
   try {
@@ -360,7 +254,9 @@ export function placementFor(type: AdminResourceType, subjectName: string) {
     case 'suggested_exam':
       return 'الامتحانات المقترحة وصفحة المادة';
     case 'questions':
-      return subjectName === 'الكل' ? 'تبويب الأسئلة في المواد' : `أسئلة مادة ${subjectName}`;
+      return subjectName === 'الكل' ? 'تبويب الأسئلة في المواد واختبر نفسك' : `أسئلة مادة ${subjectName}`;
+    case 'electronic_exam':
+      return 'الامتحانات الإلكترونية واختبر نفسك';
     case 'video':
       return 'تبويب الفيديوهات';
     default: {
