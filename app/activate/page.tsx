@@ -73,7 +73,7 @@ export default function ActivatePage() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex items-center justify-center gap-2">
           <LabibLogo size="lg" />
-          <span className="text-2xl font-bold">لبيب</span>
+          <span className="text-2xl font-bold">ترتيب</span>
         </div>
 
         <div className="glass-card rounded-3xl p-6 shadow-soft md:p-8">
@@ -111,7 +111,7 @@ export default function ActivatePage() {
           )}
 
           <Button type="button" className="mt-3 h-12 w-full rounded-2xl" variant="outline" onClick={() => router.push('/subscribe')}>
-            اشترك في لبيب+
+            اشترك في ترتيب+
           </Button>
 
           <Button type="button" variant="ghost" className="mt-2 w-full rounded-xl" onClick={goToApp}>

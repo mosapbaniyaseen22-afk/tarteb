@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LabibLogo } from '@/components/labib-logo';
+import { InstagramLinks } from '@/components/instagram-links';
 
 type AuthMode = 'login' | 'signup';
 
@@ -95,7 +96,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex items-center justify-center gap-2">
           <LabibLogo size="lg" />
-          <span className="text-2xl font-bold">لبيب</span>
+          <span className="text-2xl font-bold">ترتيب</span>
+          <InstagramLinks variant="compact" />
         </div>
 
         <div className="glass-card rounded-3xl p-6 shadow-soft md:p-8">

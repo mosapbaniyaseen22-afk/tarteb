@@ -1,29 +1,44 @@
 import { NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
-import { readResources, uploadPath } from '@/lib/admin-server';
+import { cloudPublicFileUrl } from '@/lib/admin-cloud';
+import { findResource } from '@/lib/admin-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const items = await readResources();
-  const item = items.find((row) => row.id === params.id);
-  if (!item?.fileName && !item?.fileUrl) {
-    return NextResponse.json({ error: 'الملف غير موجود' }, { status: 404 });
-  }
+function originalFileName(fileName: string | null, title: string, mime: string | null) {
+  const raw = (fileName || title || 'file').replace(/[/\\?%*:|"<>]/g, '_').trim() || 'file';
+  if (/\.[a-z0-9]{2,8}$/i.test(raw)) return raw;
+  if ((mime || '').includes('pdf') || raw.toLowerCase().includes('pdf')) return `${raw}.pdf`;
+  return raw;
+}
 
-  if (item.fileUrl) {
-    return NextResponse.redirect(item.fileUrl, 302);
-  }
-
+function isTrustedFileUrl(url: string) {
   try {
-    const bytes = await readFile(uploadPath(params.id));
-    const headers = new Headers();
-    headers.set('Content-Type', item.fileMime || 'application/octet-stream');
-    headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(item.fileName || 'file')}`);
-    headers.set('Cache-Control', 'private, max-age=3600');
-    return new NextResponse(Uint8Array.from(bytes), { headers });
+    const allowed = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!allowed) return false;
+    return new URL(url).origin === new URL(allowed).origin;
   } catch {
-    return NextResponse.json({ error: 'تعذر قراءة الملف' }, { status: 404 });
+    return false;
   }
+}
+
+function downloadRedirect(url: string, fileName: string) {
+  const next = new URL(url);
+  next.searchParams.set('download', fileName);
+  return NextResponse.redirect(next.toString(), 302);
+}
+
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const item = await findResource(params.id);
+  if (!item || (!item.filePath && !item.fileUrl)) {
+    return NextResponse.json({ error: 'الملف الأصلي غير محفوظ. ارفع الـ PDF مرة ثانية.' }, { status: 404 });
+  }
+
+  const fileName = originalFileName(item.fileName, item.title, item.fileMime);
+  const publicUrl = item.fileUrl || (item.filePath ? cloudPublicFileUrl(item.filePath) : null);
+  if (publicUrl && isTrustedFileUrl(publicUrl)) {
+    return downloadRedirect(publicUrl, fileName);
+  }
+
+  return NextResponse.json({ error: 'تعذر قراءة الملف الأصلي' }, { status: 404 });
 }

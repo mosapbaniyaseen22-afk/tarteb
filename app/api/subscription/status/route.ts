@@ -12,7 +12,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
   }
 
-  const subscription = await getUserSubscription(user.id);
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const subscription = await getUserSubscription(user.id, token || undefined);
   const active = isSubscriptionActive(subscription);
   return NextResponse.json({
     active,

@@ -35,7 +35,7 @@ export function LabibLogo({ size = 'md', className }: LabibLogoProps) {
     >
       <img
         src="/labib-logo.jpeg"
-        alt="لبيب"
+        alt="ترتيب"
         className="h-full w-full scale-[1.28] object-cover"
       />
     </span>

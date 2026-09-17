@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BookOpen, CheckCircle2, ChevronLeft, ChevronRight, Copy, Pause, Play,
@@ -35,16 +35,29 @@ export function QuranBoard({ today, history, onSave }: Props) {
   const [playing, setPlaying] = useState(false);
   const [activeAyah, setActiveAyah] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playingRef = useRef(false);
+  const ayahsRef = useRef<Ayah[]>([]);
+  const activeAyahRef = useRef(0);
 
   const surah = getSurah(selected);
+  ayahsRef.current = ayahs;
+  activeAyahRef.current = activeAyah;
+
+  const stopPlayback = useCallback(() => {
+    playingRef.current = false;
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.pause();
+    }
+    setPlaying(false);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
-      setPlaying(false);
+      stopPlayback();
       setActiveAyah(0);
-      audioRef.current?.pause();
       try {
         const data = await fetchSurahAyahs(selected);
         if (!cancelled) setAyahs(data.ayahs);
@@ -61,41 +74,65 @@ export function QuranBoard({ today, history, onSave }: Props) {
     void load();
     return () => {
       cancelled = true;
-      audioRef.current?.pause();
+      stopPlayback();
     };
-  }, [selected]);
+  }, [selected, stopPlayback]);
 
   const playAyah = async (index: number) => {
-    const ayah = ayahs[index];
+    const ayah = ayahsRef.current[index];
     if (!ayah?.audio) return;
+    if (playingRef.current && activeAyahRef.current === index) {
+      stopPlayback();
+      return;
+    }
     if (!audioRef.current) audioRef.current = new Audio();
     audioRef.current.pause();
     audioRef.current.src = ayah.audio;
     setActiveAyah(index);
+    playingRef.current = true;
     setPlaying(true);
     audioRef.current.onended = () => {
+      if (!playingRef.current) return;
       const next = index + 1;
-      if (next < ayahs.length) {
+      if (next < ayahsRef.current.length) {
         void playAyah(next);
         return;
       }
-      setPlaying(false);
+      stopPlayback();
     };
     try {
       await audioRef.current.play();
     } catch (error) {
       console.error(error);
-      setPlaying(false);
+      stopPlayback();
     }
   };
 
   const togglePlay = () => {
-    if (playing) {
-      audioRef.current?.pause();
-      setPlaying(false);
+    const audio = audioRef.current;
+    if (playingRef.current || playing) {
+      stopPlayback();
       return;
     }
-    void playAyah(activeAyah);
+    if (audio && audio.src && audio.paused && audio.currentTime > 0 && !audio.ended) {
+      playingRef.current = true;
+      setPlaying(true);
+      audio.onended = () => {
+        if (!playingRef.current) return;
+        const next = activeAyahRef.current + 1;
+        if (next < ayahsRef.current.length) {
+          void playAyah(next);
+          return;
+        }
+        stopPlayback();
+      };
+      void audio.play().catch((error) => {
+        console.error(error);
+        stopPlayback();
+      });
+      return;
+    }
+    void playAyah(activeAyahRef.current);
   };
 
   const markWird = async () => {
@@ -202,8 +239,20 @@ export function QuranBoard({ today, history, onSave }: Props) {
                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => void copyAyah(ayah)} aria-label="نسخ الآية">
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => void playAyah(index)} aria-label="تشغيل الآية">
-                      <Play className="h-4 w-4" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 rounded-xl"
+                      onClick={() => {
+                        if (playing && activeAyah === index) {
+                          stopPlayback();
+                          return;
+                        }
+                        void playAyah(index);
+                      }}
+                      aria-label={playing && activeAyah === index ? 'إيقاف الآية' : 'تشغيل الآية'}
+                    >
+                      {playing && activeAyah === index ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -213,6 +262,24 @@ export function QuranBoard({ today, history, onSave }: Props) {
           ))
         )}
       </div>
+
+      {playing ? <div className="h-20" /> : null}
+
+      {playing ? (
+        <div className="pointer-events-none fixed inset-x-0 z-40 px-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] lg:bottom-6">
+          <div className="pointer-events-auto mx-auto max-w-md">
+            <Button
+              type="button"
+              onClick={stopPlayback}
+              className="h-14 w-full rounded-2xl bg-emerald-700 text-base text-white shadow-glow hover:bg-emerald-800"
+              aria-label="إيقاف القراءة"
+            >
+              <Pause className="h-5 w-5" />
+              إيقاف القراءة
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

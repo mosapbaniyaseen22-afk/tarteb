@@ -29,7 +29,7 @@ function buildTemplate(note: Note) {
     month: 'long',
     day: 'numeric',
   });
-  const body = escapeHtml(note.content.trim() || 'صفحة فاضية من دفتر لبيب.');
+  const body = escapeHtml(note.content.trim() || 'صفحة فاضية من دفتر ترتيب.');
   const moodChip = mood
     ? `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,0.06);border-radius:999px;padding:4px 10px;font-size:12px">${mood.emoji} ${escapeHtml(mood.label)}</span>`
     : '';
@@ -46,7 +46,7 @@ function buildTemplate(note: Note) {
           <div style="position:absolute;top:0;bottom:0;right:56px;width:1px;background:rgba(244,63,94,0.42)"></div>
           <div style="padding:36px 72px 28px 36px">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px">
-              <div style="display:inline-block;background:linear-gradient(135deg,#B45309,#D97706);color:#FFF7ED;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:800">لبيب · مذكراتي</div>
+              <div style="display:inline-block;background:linear-gradient(135deg,#B45309,#D97706);color:#FFF7ED;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:800">ترتيب · مذكراتي</div>
               <div style="font-size:12px;color:${theme.muted}">${escapeHtml(dateLabel)}</div>
             </div>
             <h1 style="margin:0 0 12px;font-size:30px;line-height:1.35;font-weight:900">${escapeHtml(note.title || 'بدون عنوان')}</h1>
@@ -57,7 +57,7 @@ function buildTemplate(note: Note) {
             <div style="white-space:pre-wrap;font-size:18px;line-height:32px;font-weight:500">${body}</div>
             <div style="margin-top:40px;padding-top:14px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:${theme.muted}">
               <span>${escapeHtml(formatJournalStamp(note.updated_at))}</span>
-              <span>لبيب · دفتر الطالب</span>
+              <span>ترتيب · دفتر الطالب</span>
             </div>
           </div>
         </div>

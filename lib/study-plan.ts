@@ -4,6 +4,12 @@ import { weekdayIndex } from './week';
 export type PlanHorizon = 'daily' | 'weekly' | 'monthly';
 export type HoursFit = 'ok' | 'tight' | 'low';
 
+export type SubjectDayPlan = {
+  name: string;
+  hoursPerDay: number;
+  weekdays: number[];
+};
+
 export type StudyPlan = {
   id: string;
   userId: string;
@@ -21,6 +27,7 @@ export type StudyPlan = {
   targetAverage: number;
   weeklyHours: number;
   subjectMinutes: { name: string; minutesPerDay: number; weeklySessions: number; hard: boolean; focused: boolean }[];
+  subjectSchedules?: SubjectDayPlan[];
   weekDays: { weekday: number; label: string; focus: string[]; minutes: number; note: string }[];
   monthPhases: { week: number; theme: string; detail: string }[] | null;
   focusNote?: string;
@@ -30,6 +37,7 @@ export type StudyPlan = {
 };
 
 const HARD_SUBJECTS = ['الرياضيات', 'رياضيات', 'فيزياء', 'كيمياء', 'أحياء', 'رياضيات أعمال'];
+const MIN_SUBJECT_MINUTES = 20;
 
 export function horizonLabel(horizon: PlanHorizon): string {
   switch (horizon) {
@@ -134,6 +142,7 @@ export function buildStudyPlan(input: {
   goal: string;
   targetAverage: number;
   focusNote?: string;
+  subjectSchedules?: SubjectDayPlan[];
 }): StudyPlan {
   const hoursPerDay = Math.min(12, Math.max(1, input.hoursPerDay));
   const subjects = input.subjects.length ? input.subjects : ['مذاكرة عامة'];
@@ -194,6 +203,7 @@ export function buildStudyPlan(input: {
     targetAverage: input.targetAverage,
     weeklyHours: Math.round((weekDays.reduce((sum, day) => sum + day.minutes, 0) / 60) * 10) / 10,
     subjectMinutes,
+    subjectSchedules: input.subjectSchedules,
     weekDays,
     monthPhases: null,
     focusNote,
@@ -238,6 +248,9 @@ function makeTask(
 }
 
 export function studyTasksForDate(plan: StudyPlan, userId: string, date: string): Task[] {
+  if (plan.subjectSchedules?.length) {
+    return studyTasksFromSubjectPlans(userId, date, plan.subjectSchedules);
+  }
   const weekday = weekdayIndex(date);
   const day = plan.weekDays.find((item) => item.weekday === weekday) ?? plan.weekDays[0];
   if (!day) return [];
@@ -257,6 +270,28 @@ export function studyTasksForDate(plan: StudyPlan, userId: string, date: string)
       Math.max(12, Math.round(item.minutesPerDay * scale)),
       item.name,
       item.focused || index === 0 ? 'high' : item.hard ? 'high' : 'medium',
+    ),
+  );
+}
+
+export function studyTasksFromSubjectPlans(userId: string, date: string, plans: SubjectDayPlan[]): Task[] {
+  const weekday = weekdayIndex(date);
+  const active = plans
+    .filter((item) => item.hoursPerDay > 0 && item.weekdays.includes(weekday))
+    .sort((a, b) => {
+      const score = (name: string) => (isHardSubject(name) ? 1 : 0);
+      return score(b.name) - score(a.name);
+    });
+
+  return active.map((item, index) =>
+    makeTask(
+      userId,
+      date,
+      index,
+      `دراسة ${item.name}`,
+      Math.max(MIN_SUBJECT_MINUTES, Math.round(item.hoursPerDay * 60)),
+      item.name,
+      isHardSubject(item.name) || index === 0 ? 'high' : 'medium',
     ),
   );
 }

@@ -33,7 +33,7 @@ export function labibPageInfo(pathname: string): LabibPageContext {
     return { path: pathname, title: 'المهام', hint: 'الطالب يتابع مهامه.' };
   }
   if (pathname.startsWith('/ai')) {
-    return { path: pathname, title: 'لبيب AI', hint: 'الطالب في صفحة المحادثة الكاملة.' };
+    return { path: pathname, title: 'ترتيب AI', hint: 'الطالب في صفحة المحادثة الكاملة.' };
   }
   if (pathname.startsWith('/subscribe') || pathname.startsWith('/activate')) {
     return { path: pathname, title: 'الاشتراك', hint: 'الطالب يشوف الاشتراك.' };
@@ -41,7 +41,7 @@ export function labibPageInfo(pathname: string): LabibPageContext {
   if (pathname.startsWith('/dashboard')) {
     return { path: pathname, title: 'الرئيسية', hint: 'الطالب على لوحة التحكم.' };
   }
-  return { path: pathname || '/', title: 'التطبيق', hint: 'الطالب داخل منصة لبيب.' };
+  return { path: pathname || '/', title: 'التطبيق', hint: 'الطالب داخل منصة ترتيب.' };
 }
 
 export function labibQuickPrompts(pathname: string): string[] {

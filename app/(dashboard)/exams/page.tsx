@@ -7,13 +7,16 @@ import { Card } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ClipboardList, FileDown, Filter, Link as LinkIcon } from 'lucide-react';
 import { ResourceViewer } from '@/components/resource-viewer';
-import { resourceFileHref, resourceMatchesSubject, type AdminResource } from '@/lib/admin';
+import { resourceDownloadAnchorProps, resourceMatchesSubject, type AdminResource } from '@/lib/admin';
 import { useAdminResources } from '@/lib/use-admin-resources';
+import { useSubscription } from '@/lib/use-subscription';
+import { SubscriptionGate } from '@/components/subscription-gate';
 import type { UserSubject } from '@/lib/supabase';
 
 export default function ExamsPage() {
   const { userSubjects, profile } = useAuth();
   const { resources, loading } = useAdminResources(profile?.stage);
+  const { active: subscribed } = useSubscription();
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
   const [selectedYear, setSelectedYear] = useState<string>('all');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
@@ -37,7 +40,7 @@ export default function ExamsPage() {
       if (selectedSubject === 'all') {
         if (subjects.length === 0) return true;
         const names = subjects.map((row) => row.subjects.name_ar);
-        return item.subjectName === 'الكل' || names.includes(item.subjectName);
+        return names.some((name) => resourceMatchesSubject(item, name));
       }
       return true;
     });
@@ -66,46 +69,61 @@ export default function ExamsPage() {
 
     return (
       <div className="grid gap-4 md:grid-cols-2">
-        {items.map((item, index) => (
+        {items.map((item, index) => {
+          const download = resourceDownloadAnchorProps(item);
+          return (
           <motion.div key={item.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}>
-            <Card
-              className="flex cursor-pointer items-center gap-4 rounded-3xl border-0 glass-card p-5 shadow-soft"
-              onClick={() => setViewerItem(item)}
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <ClipboardList className="h-6 w-6" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold">{item.title}</h3>
-                <p className="text-xs text-muted-foreground">
-                  {item.subjectName}{item.year ? ` • ${item.year}` : ''}{item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
-                </p>
-              </div>
-              {item.fileName && resourceFileHref(item) && (
-                <a
-                  href={resourceFileHref(item) ?? '#'}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xl p-2 hover:bg-accent"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <FileDown className="h-5 w-5" />
-                </a>
-              )}
-              {item.externalUrl && (
-                <a
-                  href={item.externalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-xl p-2 hover:bg-accent"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <LinkIcon className="h-5 w-5" />
-                </a>
-              )}
-            </Card>
+            {download ? (
+              <a
+                {...download}
+                className="block text-inherit no-underline"
+              >
+                <Card className="flex flex-col gap-3 rounded-3xl border-0 glass-card p-5 shadow-soft sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <ClipboardList className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="break-words font-semibold leading-snug">{item.title}</h3>
+                    <p className="mt-1 break-words text-xs text-muted-foreground">
+                      {item.subjectName}{item.year ? ` • ${item.year}` : ''}{item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
+                    </p>
+                  </div>
+                  <span className="inline-flex w-fit items-center gap-1 rounded-xl bg-primary/10 px-3 py-2 text-sm font-medium text-primary">
+                    <FileDown className="h-4 w-4" />
+                    تحميل
+                  </span>
+                </Card>
+              </a>
+            ) : (
+              <Card
+                className="flex cursor-pointer flex-col gap-3 rounded-3xl border-0 glass-card p-5 shadow-soft sm:flex-row sm:items-center sm:gap-4"
+                onClick={() => setViewerItem(item)}
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <ClipboardList className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-words font-semibold leading-snug">{item.title}</h3>
+                  <p className="mt-1 break-words text-xs text-muted-foreground">
+                    {item.subjectName}{item.year ? ` • ${item.year}` : ''}{item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
+                  </p>
+                </div>
+                {item.externalUrl && (
+                  <a
+                    href={item.externalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-xl p-2 hover:bg-accent"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <LinkIcon className="h-5 w-5" />
+                  </a>
+                )}
+              </Card>
+            )}
           </motion.div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -114,7 +132,7 @@ export default function ExamsPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">الامتحانات</h1>
-        <p className="text-sm text-muted-foreground">امتحانات وزارية ومقترحة يرفعها الأدمن</p>
+        <p className="text-sm text-muted-foreground">الوزاري مجاني. الامتحانات المقترحة بالاشتراك.</p>
       </div>
 
       <Card className="flex flex-col gap-3 rounded-3xl border-0 glass-card p-4 shadow-soft sm:flex-row sm:items-center">
@@ -145,13 +163,26 @@ export default function ExamsPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">الامتحانات المقترحة</h2>
-        {renderList(suggested, 'لا توجد امتحانات مقترحة بعد')}
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">الامتحانات الإلكترونية</h2>
-        {renderList(electronic, 'لا توجد امتحانات إلكترونية بعد')}
+        <h2 className="text-lg font-semibold">الامتحانات المقترحة والإلكترونية</h2>
+        {subscribed ? (
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold">المقترحة</h3>
+              {renderList(suggested, 'لا توجد امتحانات مقترحة بعد')}
+            </div>
+            <div className="space-y-3">
+              <h3 className="text-base font-semibold">الإلكترونية</h3>
+              {renderList(electronic, 'لا توجد امتحانات إلكترونية بعد')}
+            </div>
+          </div>
+        ) : (
+          <SubscriptionGate
+            title="الامتحانات المقترحة بالاشتراك"
+            description="الوزاري مجاني في الأعلى. المقترحة تفتح بعد الاشتراك بـ 3 دنانير لأول شهر عبر كليك."
+          >
+            <div />
+          </SubscriptionGate>
+        )}
       </section>
 
       <ResourceViewer item={viewerItem} open={Boolean(viewerItem)} onOpenChange={(open) => { if (!open) setViewerItem(null); }} />

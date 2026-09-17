@@ -6,6 +6,7 @@ import {
   type AdminResourceType,
 } from './admin';
 import { compactSpaces, parseQuestions } from './parse-questions';
+import { buildPracticeQuestions } from './practice-build';
 
 const MAX_TEXT_CHARS = 180000;
 
@@ -189,11 +190,18 @@ async function extractPdf(buffer: Buffer) {
   try {
     const { PDFParse } = await import('pdf-parse');
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    const firstPages = buffer.byteLength > 12 * 1024 * 1024 ? 18 : 36;
     try {
       const result = await Promise.race([
-        parser.getText(),
+        parser.getText({
+          first: firstPages,
+          cellSeparator: ' ',
+          itemJoiner: '',
+          cellThreshold: 18,
+          pageJoiner: '\n',
+        }),
         new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('pdf-timeout')), 12000);
+          setTimeout(() => reject(new Error('pdf-timeout')), 35000);
         }),
       ]);
       return compactSpaces((result.text || '').replace(/\n--\s*\d+\s+of\s+\d+\s*--\s*/gi, '\n'));
@@ -272,7 +280,10 @@ export async function classifyDocument(input: {
   buffer: Buffer;
 }): Promise<IngestClassification> {
   const extractedText = (await extractDocumentText(input.fileName, input.mime, input.buffer)).slice(0, MAX_TEXT_CHARS);
-  const questions = parseQuestions(extractedText);
+  const parsed = parseQuestions(extractedText);
+  const questions = parsed.some((question) => question.options.length >= 2)
+    ? parsed
+    : buildPracticeQuestions(extractedText);
   const haystack = `${input.fileName}\n${extractedText}`;
   const type = detectType(haystack, questions.length);
   const subjectName = detectSubject(haystack);

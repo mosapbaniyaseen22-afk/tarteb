@@ -19,8 +19,9 @@ import { StudentSubscriptionCard } from '@/components/student-subscription-card'
 import { jordanDateISO } from '@/lib/prayer-times';
 import { subjectProgressPercent } from '@/lib/user-stats';
 import type { QuizAttempt, UserSubject, ScheduleEntry, StudySession } from '@/lib/supabase';
-import { resourceTypeLabel, type AdminResource } from '@/lib/admin';
+import { isPaidAdminResourceType, resourceDownloadAnchorProps, resourceTypeLabel, type AdminResource } from '@/lib/admin';
 import { useAdminResources } from '@/lib/use-admin-resources';
+import { useSubscription } from '@/lib/use-subscription';
 
 const quickActions = [
   { href: '/subjects', label: 'شرح المواد', icon: BookOpen, color: '#2563EB', desc: 'شروحات مفصلة' },
@@ -31,12 +32,13 @@ const quickActions = [
   { href: '/journal', label: 'مذكراتي', icon: NotebookPen, color: '#B45309', desc: 'دفتر يوميات' },
   { href: '/practice', label: 'اختبر نفسك', icon: CircleHelp, color: '#22C55E', desc: 'تدريب على الأسئلة' },
   { href: '/quran', label: 'ورد القرآن', icon: Moon, color: '#059669', desc: 'قرآن وأذكار وتسبيح' },
-  { href: '/ai', label: 'لبيب AI', icon: Brain, color: '#EC4899', desc: 'مساعدك الذكي' },
+  { href: '/ai', label: 'ترتيب AI', icon: Brain, color: '#EC4899', desc: 'مساعدك الذكي' },
 ];
 
 export default function DashboardPage() {
   const { user, profile, userSubjects } = useAuth();
   const { resources: published } = useAdminResources(profile?.stage);
+  const { active: subscribed } = useSubscription();
   const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
   const [subjects, setSubjects] = useState<UserSubject[]>([]);
   const [todaySchedule, setTodaySchedule] = useState<ScheduleEntry[]>([]);
@@ -101,16 +103,44 @@ export default function DashboardPage() {
 
       {published.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">جديد من لبيب</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            {published.slice(0, 6).map((item: AdminResource) => (
-              <Link key={item.id} href={item.type === 'ministerial_exam' || item.type === 'suggested_exam' || item.type === 'electronic_exam' ? '/exams' : item.type === 'questions' ? '/practice' : '/subjects'}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">جديد من ترتيب</h2>
+            <Link href="/subjects">
+              <Button variant="ghost" size="sm" className="rounded-lg text-xs">
+                المزيد <ChevronLeft className="h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="grid gap-3">
+            {[...published]
+              .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+              .slice(0, 3)
+              .map((item: AdminResource) => {
+              const paidLocked = isPaidAdminResourceType(item.type) && !subscribed;
+              const download = paidLocked ? null : resourceDownloadAnchorProps(item);
+              const fallbackHref = paidLocked
+                ? '/subscribe'
+                : item.type === 'ministerial_exam' || item.type === 'suggested_exam' || item.type === 'electronic_exam'
+                ? '/exams'
+                : item.type === 'questions'
+                  ? '/practice'
+                  : '/subjects';
+              const card = (
                 <Card className="rounded-2xl border-0 glass-card p-4 shadow-soft transition hover:-translate-y-0.5">
                   <div className="text-xs text-muted-foreground">{resourceTypeLabel(item.type)} • {item.subjectName}</div>
-                  <div className="mt-1 font-semibold">{item.title}</div>
+                  <div className="mt-1 break-words font-semibold leading-snug">{item.title}</div>
                 </Card>
-              </Link>
-            ))}
+              );
+              return download ? (
+                <a key={item.id} {...download} className="block text-inherit no-underline">
+                  {card}
+                </a>
+              ) : (
+                <Link key={item.id} href={fallbackHref}>
+                  {card}
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}
@@ -262,7 +292,7 @@ export default function DashboardPage() {
                   >
                     <BookMarked className="h-5 w-5" />
                   </div>
-                  <div className="text-sm font-semibold">{us.subjects.name_ar}</div>
+                  <div className="break-words text-sm font-semibold leading-snug">{us.subjects.name_ar}</div>
                   <Progress value={subjectProgressPercent(us, attempts)} className="mt-2 h-1.5" />
                 </Card>
               </Link>

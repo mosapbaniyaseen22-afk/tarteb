@@ -4,24 +4,29 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { ArrowRight, Check, Crown, KeyRound, MessageCircle, Smartphone } from 'lucide-react';
+import { ArrowRight, Check, Crown, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { PRO_WHATSAPP_LOCAL, PRO_WHATSAPP_MESSAGE, proWhatsAppUrl } from '@/lib/pro';
+import { CliqPayButtons } from '@/components/cliq-pay-buttons';
+import {
+  PRO_FREE_FEATURES,
+  PRO_OFFER_LABEL,
+  PRO_PAID_FEATURES,
+  PRO_PRICE_LABEL,
+} from '@/lib/pro';
 import { ACTIVATION_DURATION_DAYS, formatActivationCode } from '@/lib/activation';
 import { activateSubscriptionCode } from '@/lib/subscription-client';
 
 const benefits = [
-  'تفعيل لبيب+ لمدة شهر بعد تأكيد الدفع',
-  'وصول كامل لشروحات ودوسيات المنصة',
-  'لبيب AI وتنظيم الوقت والامتحانات',
+  `تفعيل ترتيب+ لمدة شهر بـ ${PRO_PRICE_LABEL} (${PRO_OFFER_LABEL})`,
+  ...PRO_PAID_FEATURES,
+  ...PRO_FREE_FEATURES,
 ];
 
 export default function SubscribePage() {
   const router = useRouter();
-  const [opening, setOpening] = useState(false);
   const [code, setCode] = useState('');
   const [activating, setActivating] = useState(false);
 
@@ -42,15 +47,6 @@ export default function SubscribePage() {
     }
   };
 
-  const handleCliqPay = () => {
-    if (opening) return;
-    setOpening(true);
-    toast.success('يرجى إرسال الوصل بعد الدفع');
-    window.setTimeout(() => {
-      window.location.assign(proWhatsAppUrl(PRO_WHATSAPP_MESSAGE));
-    }, 700);
-  };
-
   return (
     <div className="mx-auto max-w-xl space-y-6">
       <button
@@ -67,9 +63,12 @@ export default function SubscribePage() {
           <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl gradient-primary text-white shadow-glow">
             <Crown className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold md:text-3xl">اشترك في لبيب+</h1>
+          <h1 className="text-2xl font-bold md:text-3xl">اشترك في ترتيب+</h1>
+          <p className="mt-2 text-lg font-semibold text-primary">
+            {PRO_PRICE_LABEL} • {PRO_OFFER_LABEL}
+          </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            أدخل كود الاشتراك، أو ادفع عبر كليك ثم أرسل الوصل على واتساب.
+            ادفع عبر كليك، بعدين أرسل الوصل على واتساب أو إنستغرام لنرسل لك كود التفعيل.
           </p>
 
           <form onSubmit={(event) => void handleActivate(event)} className="mt-6 space-y-3">
@@ -102,25 +101,7 @@ export default function SubscribePage() {
             ))}
           </ul>
 
-          <div className="mt-6 rounded-2xl bg-accent/50 p-4">
-            <div className="mb-1 flex items-center gap-2 font-semibold">
-              <Smartphone className="h-4 w-4 text-primary" />
-              الدفع عبر كليك
-            </div>
-            <p className="text-sm text-muted-foreground">
-              بعد الضغط سيتم تحويلك إلى واتساب على الرقم {PRO_WHATSAPP_LOCAL}. يرجى إرسال الوصل بعد الدفع.
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            disabled={opening}
-            onClick={handleCliqPay}
-            className="mt-6 h-14 w-full rounded-2xl gradient-primary text-base font-semibold shadow-glow"
-          >
-            <MessageCircle className="h-5 w-5" />
-            {opening ? 'جاري التحويل إلى واتساب...' : 'الدفع عبر كليك'}
-          </Button>
+          <CliqPayButtons className="mt-6" />
 
           <p className="mt-3 text-center text-sm font-medium text-primary">
             يرجى إرسال الوصل بعد الدفع

@@ -58,22 +58,22 @@ export default function SubjectsPage() {
               whileHover={{ y: -4 }}
             >
               <Link href={`/subjects/${us.subject_id}`}>
-                <Card className="group cursor-pointer rounded-3xl border-0 glass-card p-6 shadow-soft transition-all hover:shadow-glow">
-                  <div className="flex items-center gap-4">
+                <Card className="group cursor-pointer rounded-3xl border-0 glass-card p-4 shadow-soft transition-all hover:shadow-glow sm:p-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <div
-                      className="flex h-14 w-14 items-center justify-center rounded-2xl transition-transform group-hover:scale-110"
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform group-hover:scale-110 sm:h-14 sm:w-14"
                       style={{ backgroundColor: `${us.subjects.color}15`, color: us.subjects.color }}
                     >
-                      <BookMarked className="h-7 w-7" />
+                      <BookMarked className="h-6 w-6 sm:h-7 sm:w-7" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold">{us.subjects.name_ar}</h3>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="break-words text-lg font-semibold leading-snug">{us.subjects.name_ar}</h3>
                       <div className="mt-2 flex items-center gap-2">
-                        <Progress value={subjectProgressPercent(us, attempts)} className="h-2 flex-1" />
-                        <span className="text-xs text-muted-foreground">{subjectProgressPercent(us, attempts)}%</span>
+                        <Progress value={subjectProgressPercent(us, attempts)} className="h-2 min-w-0 flex-1" />
+                        <span className="shrink-0 text-xs text-muted-foreground">{subjectProgressPercent(us, attempts)}%</span>
                       </div>
                     </div>
-                    <ChevronLeft className="h-5 w-5 text-muted-foreground transition-transform group-hover:-translate-x-1" />
+                    <ChevronLeft className="hidden h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:-translate-x-1 sm:block" />
                   </div>
                 </Card>
               </Link>

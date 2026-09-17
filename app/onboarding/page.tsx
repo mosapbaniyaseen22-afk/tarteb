@@ -131,7 +131,7 @@ export default function OnboardingPage() {
         {/* Logo */}
         <div className="mb-8 flex items-center justify-center gap-2">
           <LabibLogo size="lg" />
-          <span className="text-2xl font-bold">لبيب</span>
+          <span className="text-2xl font-bold">ترتيب</span>
         </div>
 
         {/* Progress */}

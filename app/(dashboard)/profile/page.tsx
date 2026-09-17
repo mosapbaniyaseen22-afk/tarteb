@@ -21,6 +21,7 @@ import { StudentSubscriptionCard } from '@/components/student-subscription-card'
 import { SecondYearEnrollmentDialog } from '@/components/second-year-enrollment-dialog';
 import { EditStudyFieldDialog } from '@/components/edit-study-field-dialog';
 import { YearAccountSwitch } from '@/components/year-account-switch';
+import { InstagramLinks } from '@/components/instagram-links';
 
 export default function ProfilePage() {
   const { user, profile, userSubjects, signOut, enrolledStages, switchStage } = useAuth();
@@ -247,6 +248,13 @@ export default function ProfilePage() {
           </Card>
         </motion.div>
       )}
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+        <div className="flex items-center justify-between gap-3 rounded-2xl glass-card px-4 py-3 shadow-soft">
+          <h3 className="text-sm font-semibold">إنستغرام</h3>
+          <InstagramLinks variant="compact" />
+        </div>
+      </motion.div>
 
       {/* Achievements */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>

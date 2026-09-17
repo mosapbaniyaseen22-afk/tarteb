@@ -64,7 +64,7 @@ function buildTemplate(plan: StudyPlan) {
       <div style="padding:36px 40px 28px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
           <div>
-            <div style="display:inline-block;background:linear-gradient(135deg,#2563EB,#14B8A6);color:#fff;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:800;letter-spacing:.02em">لبيب · خطة دراسية</div>
+            <div style="display:inline-block;background:linear-gradient(135deg,#2563EB,#14B8A6);color:#fff;border-radius:999px;padding:5px 12px;font-size:11px;font-weight:800;letter-spacing:.02em">ترتيب · خطة دراسية</div>
             <h1 style="margin:12px 0 8px;font-size:26px;line-height:1.35;font-weight:900">${escapeHtml(plan.title)}</h1>
             <p style="margin:0;color:#475569;font-size:14px">الهدف: ${escapeHtml(plan.goal)} · جدول أسبوعي متكرر</p>
           </div>
@@ -110,7 +110,7 @@ function buildTemplate(plan: StudyPlan) {
 
         <div style="margin-top:28px;display:flex;justify-content:space-between;align-items:center;color:#64748B;font-size:11px">
           <span>${escapeHtml(dateLabel)}</span>
-          <span>لبيب · منصة طلاب التوجيهي</span>
+          <span>ترتيب · منصة طلاب التوجيهي</span>
         </div>
       </div>
     </div>`;

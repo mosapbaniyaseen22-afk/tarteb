@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/lib/auth-context';
 import { addQuizAttempt, loadQuizAttempts } from '@/lib/app-data';
 import { useAdminResources } from '@/lib/use-admin-resources';
+import { resourceMatchesSubject } from '@/lib/admin';
 import {
   UNGROUPED_LESSON,
   UNGROUPED_UNIT,
@@ -12,7 +13,7 @@ import {
   countMcq,
   groupPracticeTree,
   lessonQuiz,
-  questionsForResource,
+  practiceSourceCount,
   type PracticeLesson,
   type PracticeQuestion,
   type PracticeUnit,
@@ -21,6 +22,7 @@ import { jordanDateISO } from '@/lib/prayer-times';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BookOpen, CircleHelp, Layers, RotateCcw, Sparkles, Trophy } from 'lucide-react';
+import { SubscriptionGate } from '@/components/subscription-gate';
 import type { QuizAttempt, UserSubject } from '@/lib/supabase';
 
 type QuizPhase = 'pick-subject' | 'pick-unit' | 'pick-lesson' | 'quiz' | 'result';
@@ -57,16 +59,37 @@ export default function PracticePage() {
 
   const visibleResources = useMemo(() => {
     return resources.filter((item) => {
-      if (questionsForResource(item).length === 0) return false;
-      if (selectedName) return item.subjectName === 'الكل' || item.subjectName === selectedName;
+      if (item.published === false) return false;
+      if (profile?.stage && item.stage !== profile.stage) return false;
+      if (selectedName) return resourceMatchesSubject(item, selectedName);
       if (subjectNames.length === 0) return true;
-      return item.subjectName === 'الكل' || subjectNames.includes(item.subjectName);
+      return subjectNames.some((name) => resourceMatchesSubject(item, name));
     });
-  }, [resources, selectedName, subjectNames]);
+  }, [resources, selectedName, subjectNames, profile?.stage]);
 
   const pool = useMemo(
-    () => collectPracticeQuestions(visibleResources, selectedName),
+    () => collectPracticeQuestions(visibleResources, selectedName, subjectNames),
+    [visibleResources, selectedName, subjectNames],
+  );
+  const sourceCount = useMemo(
+    () => practiceSourceCount(visibleResources, selectedName),
     [visibleResources, selectedName],
+  );
+  const subjectStats = useMemo(
+    () => subjects.map((subject) => {
+      const name = subject.subjects.name_ar;
+      const questions = collectPracticeQuestions(resources.filter((item) => (
+        item.published !== false && (!profile?.stage || item.stage === profile.stage)
+      )), name);
+      return {
+        id: subject.subject_id,
+        name,
+        color: subject.subjects.color,
+        mcq: countMcq(questions),
+        sources: practiceSourceCount(resources, name),
+      };
+    }),
+    [subjects, resources, profile?.stage],
   );
   const units = useMemo(() => groupPracticeTree(pool), [pool]);
   const currentUnit: PracticeUnit | null = units.find((item) => item.name === selectedUnit) ?? null;
@@ -83,22 +106,29 @@ export default function PracticePage() {
     setPhase('quiz');
   };
 
-  const chooseSubject = (subjectId: string) => {
+  const openSubject = (subjectId: string) => {
+    const name = subjectId === 'all'
+      ? null
+      : subjects.find((item) => item.subject_id === subjectId)?.subjects.name_ar ?? subjectId;
+    const nextPool = collectPracticeQuestions(
+      resources.filter((item) => item.published !== false && (!profile?.stage || item.stage === profile.stage)),
+      name,
+      subjectNames,
+    );
+    const nextUnits = groupPracticeTree(nextPool);
     setSelectedSubject(subjectId);
-    setSelectedUnit(null);
     setSelectedLesson(null);
-    setPhase('pick-subject');
-  };
-
-  const openUnits = () => {
-    if (units.length === 0) return;
-    if (units.length === 1) {
-      const onlyUnit = units[0];
-      if (!onlyUnit) return;
-      setSelectedUnit(onlyUnit.name);
+    if (nextUnits.length === 0) {
+      setSelectedUnit(null);
+      setPhase('pick-subject');
+      return;
+    }
+    if (nextUnits.length === 1) {
+      setSelectedUnit(nextUnits[0]?.name ?? null);
       setPhase('pick-lesson');
       return;
     }
+    setSelectedUnit(null);
     setPhase('pick-unit');
   };
 
@@ -177,7 +207,7 @@ export default function PracticePage() {
       <Button
         variant={selectedSubject === 'all' ? 'default' : 'outline'}
         className="rounded-full"
-        onClick={() => chooseSubject('all')}
+        onClick={() => openSubject('all')}
       >
         كل المواد
       </Button>
@@ -186,7 +216,7 @@ export default function PracticePage() {
           key={subject.subject_id}
           variant={selectedSubject === subject.subject_id ? 'default' : 'outline'}
           className="rounded-full"
-          onClick={() => chooseSubject(subject.subject_id)}
+          onClick={() => openSubject(subject.subject_id)}
         >
           {subject.subjects.name_ar}
         </Button>
@@ -216,7 +246,29 @@ export default function PracticePage() {
     case 'pick-subject':
       body = (
         <>
-          {subjectPicker}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {subjectStats.map((subject) => (
+              <button
+                key={subject.id}
+                type="button"
+                onClick={() => openSubject(subject.id)}
+                className="rounded-3xl border-0 glass-card p-5 text-right shadow-soft transition hover:-translate-y-0.5"
+              >
+                <div
+                  className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{ backgroundColor: `${subject.color}15`, color: subject.color }}
+                >
+                  <BookOpen className="h-5 w-5" />
+                </div>
+                <div className="font-semibold">{subject.name}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {subject.mcq > 0
+                    ? `${subject.mcq} سؤال وزاري • ${subject.sources} ملف منشور`
+                    : 'بانتظار أسئلة من المواد والامتحانات المنشورة'}
+                </div>
+              </button>
+            ))}
+          </div>
           <Card className="rounded-3xl border-0 glass-card p-8 text-center shadow-soft">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <CircleHelp className="h-8 w-8" />
@@ -224,17 +276,22 @@ export default function PracticePage() {
             {pool.length === 0 ? (
               <>
                 <h2 className="text-lg font-semibold">لا توجد أسئلة بعد</h2>
-                <p className="mt-2 text-sm text-muted-foreground">سيظهر التدريب هنا عندما يُرفع كتاب أو بنك أسئلة للمادة</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  اختبر نفسك يتحدث تلقائياً من المواد والامتحانات المنشورة. بعد رفع كتاب أو وزاري يظهر التدريب هنا حسب الدرس.
+                </p>
               </>
             ) : (
               <>
-                <h2 className="text-lg font-semibold">اختبر نفسك</h2>
+                <h2 className="text-lg font-semibold">اختبر نفسك بنمط وزاري</h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  اختر الوحدة ثم الدرس، وأجب عن أسئلة ضع دائرة
+                  الأسئلة من {sourceCount} ملف منشور. اختر المادة ثم الوحدة ثم الدرس.
                 </p>
-                <Button onClick={openUnits} className="mt-5 rounded-xl gradient-primary">
+                <Button
+                  onClick={() => openSubject('all')}
+                  className="mt-5 rounded-xl gradient-primary"
+                >
                   <Sparkles className="h-4 w-4" />
-                  اختيار الوحدة
+                  كل المواد
                 </Button>
               </>
             )}
@@ -383,12 +440,19 @@ export default function PracticePage() {
   }
 
   return (
+    <SubscriptionGate
+      title="اختبر نفسك بالاشتراك"
+      description="هذا القسم يفتح بعد الاشتراك. الامتحانات الوزارية تبقى مجانية من صفحة الامتحانات."
+    >
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">اختبر نفسك</h1>
-        <p className="text-sm text-muted-foreground">مادة، ثم وحدة، ثم درس، ثم أسئلة ضع دائرة من الكتاب</p>
+        <p className="text-sm text-muted-foreground">
+          أسئلة بنمط وزاري من المواد والامتحانات المنشورة، تتحدث تلقائياً مع كل رفع جديد
+        </p>
       </div>
       {body}
     </div>
+    </SubscriptionGate>
   );
 }

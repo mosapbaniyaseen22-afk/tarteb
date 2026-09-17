@@ -61,7 +61,7 @@ export function LabibFloatChat() {
       setWatching(Boolean(screen.text || screen.image));
 
       const token = data.session?.access_token;
-      if (!token) throw new Error('سجّل الدخول للمحادثة مع لبيب');
+      if (!token) throw new Error('سجّل الدخول للمحادثة مع ترتيب');
 
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
@@ -79,7 +79,7 @@ export function LabibFloatChat() {
       const contentType = response.headers.get('content-type') || '';
       if (!response.ok || !response.body || contentType.includes('application/json')) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error || 'تعذر الحصول على رد من لبيب');
+        throw new Error(payload.error || 'تعذر الحصول على رد من ترتيب');
       }
 
       const reader = response.body.getReader();
@@ -92,12 +92,12 @@ export function LabibFloatChat() {
         setDraft(reply);
       }
       reply = reply.trim();
-      if (!reply) throw new Error('رد فارغ من لبيب، حاول مرة أخرى');
+      if (!reply) throw new Error('رد فارغ من ترتيب، حاول مرة أخرى');
 
       const aiMsg = await addAiMessage({ user_id: user.id, role: 'assistant', content: reply });
       if (aiMsg) setMessages((prev) => [...prev, aiMsg]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'تعذر الحصول على رد من لبيب');
+      toast.error(error instanceof Error ? error.message : 'تعذر الحصول على رد من ترتيب');
     } finally {
       setDraft('');
       setSending(false);
@@ -121,7 +121,7 @@ export function LabibFloatChat() {
               <LabibLogo size="sm" className="ring-white/40" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-sm font-bold">
-                  لبيب
+                  ترتيب
                   {watching ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-medium">
                       <Eye className="h-3 w-3" />
@@ -144,7 +144,7 @@ export function LabibFloatChat() {
             <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
               {messages.length === 0 ? (
                 <div className="rounded-2xl bg-accent/50 p-3 text-sm">
-                  <p className="font-semibold">أهلاً، أنا لبيب</p>
+                  <p className="font-semibold">أهلاً، أنا ترتيب</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {screenPreview
                       ? `شايف صفحتك: ${screenPreview}`
@@ -205,7 +205,7 @@ export function LabibFloatChat() {
               <Input
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="احكي مع لبيب..."
+                placeholder="احكي مع ترتيب..."
                 className="h-11 rounded-2xl border-0 bg-accent/50"
                 disabled={sending}
               />
@@ -227,7 +227,7 @@ export function LabibFloatChat() {
         type="button"
         onClick={() => setOpen((current) => !current)}
         className="pointer-events-auto relative h-16 w-16 overflow-visible rounded-full bg-transparent shadow-none transition hover:scale-105"
-        aria-label={open ? 'إغلاق لبيب' : 'فتح محادثة لبيب'}
+        aria-label={open ? 'إغلاق ترتيب' : 'فتح محادثة ترتيب'}
       >
         {!open ? <span className="absolute -inset-1 rounded-full bg-primary/20 blur-md" /> : null}
         {open ? (
@@ -237,7 +237,7 @@ export function LabibFloatChat() {
         ) : (
           <img
             src="/labib-bubble.png"
-            alt="لبيب"
+            alt="ترتيب"
             className="relative h-16 w-16 rounded-full object-cover drop-shadow-lg"
           />
         )}

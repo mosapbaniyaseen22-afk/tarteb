@@ -6,6 +6,7 @@ import {
   BookOpen,
   CircleHelp,
   ClipboardList,
+  FileDown,
   FileSearch,
   FileText,
   FolderOpen,
@@ -25,14 +26,30 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ADMIN_RESOURCE_TYPES,
-  resourceFileHref,
+  forgetAdminResource,
+  resourceDownloadAnchorProps,
   subjectsForPublishStage,
   type AdminResource,
   type AdminResourceType,
 } from '@/lib/admin';
+import { questionsForResource } from '@/lib/practice';
+import { newResourceId, uploadOriginalFile } from '@/lib/admin-original-upload';
+import { AdminPracticeSyncCard } from '@/components/admin/admin-practice-sync-card';
 import { getStageLabel, type TawjihiStage } from '@/lib/utils';
 
 const EXAM_YEARS = Array.from({ length: 12 }, (_, index) => String(new Date().getFullYear() + 1 - index));
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new Error('الخادم لم يُرجع رداً. حاول مرة أخرى.');
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error('تعذر قراءة رد الخادم. حاول مرة أخرى.');
+  }
+}
 
 const CATEGORY_ICONS: Record<AdminResourceType, typeof BookOpen> = {
   material: BookOpen,
@@ -78,6 +95,15 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
     setFile(null);
   };
 
+  const attachOriginal = async (form: FormData, file: File, id = newResourceId()) => {
+    form.set('id', id);
+    form.set('fileName', file.name);
+    form.set('fileMime', file.type || 'application/pdf');
+    const stored = await uploadOriginalFile(id, file);
+    form.set('filePath', stored.filePath);
+    form.set('fileUrl', stored.fileUrl);
+  };
+
   const handleUpload = async (event: FormEvent) => {
     event.preventDefault();
     if (!title.trim()) {
@@ -99,32 +125,64 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
       form.set('year', year);
       form.set('stage', stage);
       form.set('externalUrl', externalUrl.trim());
-      if (file) form.set('file', file);
+      if (file) {
+        await attachOriginal(form, file);
+      }
 
-      const response = await fetch('/api/admin/resources', { method: 'POST', body: form });
-      const payload = (await response.json()) as { error?: string };
+      let response = await fetch('/api/admin/resources', { method: 'POST', body: form });
+      if (!response.ok && response.status >= 500) {
+        response = await fetch('/api/admin/resources', { method: 'POST', body: form });
+      }
+      const payload = await readJsonResponse<{ error?: string }>(response);
       if (!response.ok) {
         toast.error(payload.error || 'تعذر رفع المحتوى');
         return;
       }
-      toast.success('تم نشر المحتوى لكل طلاب هذه السنة');
+      toast.success('تم نشر المحتوى. الملف ظاهر لكل الطلاب ويمكنهم تحميله');
       resetForm();
       await onRefresh();
-    } catch {
-      toast.error('تعذر رفع المحتوى');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر رفع المحتوى');
     } finally {
       setSaving(false);
     }
   };
 
+  const handleReplaceFile = async (id: string, nextFile: File | null) => {
+    if (!nextFile) return;
+    try {
+      const form = new FormData();
+      await attachOriginal(form, nextFile, id);
+      const response = await fetch(`/api/admin/resources/${id}`, { method: 'PATCH', body: form });
+      const payload = await readJsonResponse<{ error?: string }>(response);
+      if (!response.ok) {
+        toast.error(payload.error || 'تعذر حفظ الملف للتحميل');
+        return;
+      }
+      toast.success('تم حفظ الملف. الطلاب يقدروا يحملوه الآن');
+      await onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ الملف للتحميل');
+    }
+  };
+
   const handleDelete = async (id: string) => {
-    const response = await fetch(`/api/admin/resources/${id}`, { method: 'DELETE' });
-    if (!response.ok) {
-      toast.error('تعذر حذف العنصر');
+    if (typeof window !== 'undefined' && !window.confirm('سيتم حذف الملف من المنصة والتخزين بالكامل. متأكد؟')) {
       return;
     }
-    toast.success('تم حذف المحتوى من صفحات الطلاب');
-    await onRefresh();
+    try {
+      const response = await fetch(`/api/admin/resources/${id}`, { method: 'DELETE' });
+      const payload = await readJsonResponse<{ error?: string }>(response);
+      if (!response.ok) {
+        toast.error(payload.error || 'تعذر حذف الملف');
+        return;
+      }
+      forgetAdminResource(id);
+      toast.success('تم حذف الملف بالكامل من المنصة والتخزين');
+      await onRefresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حذف الملف');
+    }
   };
 
   const ingestFiles = async (files: File[]) => {
@@ -136,29 +194,36 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
 
     setIngesting(true);
     try {
-      const form = new FormData();
-      form.set('stage', stage);
-      for (const item of allowed) form.append('file', item);
-      const response = await fetch('/api/admin/ingest', { method: 'POST', body: form });
-      const payload = (await response.json()) as {
-        error?: string;
-        items?: Array<{ summary: string; scannedLikely: boolean; item: { title: string } }>;
-      };
-      if (!response.ok) {
-        toast.error(payload.error || 'تعذر استخراج الملف');
-        return;
+      const notes: string[] = [];
+      for (const item of allowed) {
+        const form = new FormData();
+        form.set('stage', stage);
+        await attachOriginal(form, item);
+        let response = await fetch('/api/admin/ingest', { method: 'POST', body: form });
+        if (!response.ok && response.status >= 500) {
+          response = await fetch('/api/admin/ingest', { method: 'POST', body: form });
+        }
+        const payload = await readJsonResponse<{
+          error?: string;
+          items?: Array<{ summary: string; scannedLikely: boolean; item: { title: string } }>;
+        }>(response);
+        if (!response.ok) {
+          toast.error(payload.error || 'تعذر حفظ الملف الأصلي');
+          return;
+        }
+        notes.push(
+          ...(payload.items ?? []).map((row) =>
+            row.scannedLikely
+              ? `${row.item.title}: ${row.summary} (النص قليل، قد يكون الملف صورة)`
+              : `${row.item.title}: تم حفظ الملف الأصلي للتحميل`,
+          ),
+        );
       }
-
-      const notes = (payload.items ?? []).map((row) =>
-        row.scannedLikely
-          ? `${row.item.title}: ${row.summary} (النص قليل، قد يكون الملف صورة)`
-          : `${row.item.title}: ${row.summary}`,
-      );
       setIngestNotes(notes);
-      toast.success(notes.length === 1 ? 'تم نشر الملف لطلاب هذه السنة' : `تم نشر ${notes.length} ملفات لطلاب هذه السنة`);
+      toast.success(notes.length === 1 ? 'تم نشر الملف لكل الطلاب مع رابط تحميل' : `تم نشر ${notes.length} ملفات لكل الطلاب مع رابط تحميل`);
       await onRefresh();
-    } catch {
-      toast.error('تعذر استخراج الملف');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'تعذر حفظ الملف الأصلي');
     } finally {
       setIngesting(false);
     }
@@ -176,6 +241,8 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
           تغيير السنة
         </Button>
       </div>
+
+      <AdminPracticeSyncCard items={stageItems} onRefresh={onRefresh} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {ADMIN_RESOURCE_TYPES.map((category) => {
@@ -210,7 +277,7 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
           <h3 className="text-xl font-bold">استخراج تلقائي من PDF أو Word</h3>
         </div>
         <p className="mb-4 text-sm text-muted-foreground">
-          الملف يُنشر مباشرة لطلاب {getStageLabel(stage)} في الشرح أو الأسئلة أو الامتحانات حسب محتواه.
+          الملف الأصلي يُحفظ كما هو (PDF) ويظهر لكل الطلاب. الأسئلة الوزارية تُستخرج لاختبر نفسك وتتجدد مع كل رفع جديد.
         </p>
         <label
           onDragOver={(event) => {
@@ -230,7 +297,7 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
         >
           <Upload className="mb-3 h-8 w-8 text-primary" />
           <div className="font-semibold">{ingesting ? 'جاري استخراج المحتوى...' : 'اسحب الملف هنا أو اضغط للاختيار'}</div>
-          <div className="mt-1 text-xs text-muted-foreground">PDF أو Word ‎.docx • حتى 20 ميغابايت</div>
+          <div className="mt-1 text-xs text-muted-foreground">PDF أو Word ‎.docx • حتى 100 ميغابايت</div>
           <input
             type="file"
             accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -306,7 +373,7 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
           <div className="md:col-span-2">
             <Button type="submit" disabled={saving} className="rounded-xl gradient-primary">
               <Upload className="h-4 w-4" />
-              {saving ? 'جاري النشر...' : `نشر لطلاب ${getStageLabel(stage)}`}
+              {saving ? 'جاري النشر...' : 'نشر لكل الطلاب'}
             </Button>
           </div>
         </form>
@@ -320,7 +387,7 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
           </Card>
         ) : (
           typeItems.map((item) => {
-            const href = resourceFileHref(item);
+            const download = resourceDownloadAnchorProps(item);
             return (
               <Card key={item.id} className="flex flex-col gap-3 rounded-2xl border-0 glass-card p-4 shadow-soft sm:flex-row sm:items-center">
                 <div className="flex-1">
@@ -329,19 +396,34 @@ export function AdminPublishHub({ stage, items, onRefresh, onBack }: AdminPublis
                     {item.subjectName}
                     {item.year ? ` • ${item.year}` : ''}
                     {item.autoClassified ? ' • استخراج تلقائي' : ''}
-                    {item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
+                    {questionsForResource(item).length > 0 ? ` • ${questionsForResource(item).length} سؤال لاختبر نفسك` : ''}
                     {item.published ? ' • ظاهر للطلاب' : ''}
+                    {item.fileUrl ? ' • PDF أصلي جاهز للتحميل' : ' • يحتاج رفع الـ PDF الأصلي'}
                     {item.description ? ` • ${item.description}` : ''}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  {href && (
-                    <Button variant="ghost" size="icon" className="rounded-xl" asChild>
-                      <a href={href} target="_blank" rel="noreferrer">
-                        <FileText className="h-4 w-4" />
+                <div className="flex flex-wrap gap-2">
+                  {download && (
+                    <Button variant="ghost" className="rounded-xl" asChild>
+                      <a {...download}>
+                        <FileDown className="h-4 w-4" />
+                        تحميل
                       </a>
                     </Button>
                   )}
+                  <label className="inline-flex cursor-pointer items-center gap-1 rounded-xl px-3 py-2 text-sm hover:bg-accent">
+                    <Upload className="h-4 w-4" />
+                    {item.fileUrl ? 'استبدال الملف الأصلي' : 'أرفق ملف PDF الأصلي'}
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleReplaceFile(item.id, event.target.files?.[0] ?? null);
+                        event.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
                   {item.externalUrl && (
                     <Button variant="ghost" size="icon" className="rounded-xl" asChild>
                       <a href={item.externalUrl} target="_blank" rel="noreferrer">

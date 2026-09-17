@@ -21,13 +21,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'لبيب | منصة طلاب التوجيهي',
+  title: 'ترتيب | منصة طلاب التوجيهي',
   description: 'منصة تعليمية متكاملة لطلاب التوجيهي في الأردن - شرح، تلخيصات، دوسيات، امتحانات، تنظيم وقت، ومساعد ذكي',
-  applicationName: 'لبيب',
+  applicationName: 'ترتيب',
   formatDetection: { telephone: false },
   appleWebApp: {
     capable: true,
-    title: 'لبيب',
+    title: 'ترتيب',
     statusBarStyle: 'default',
   },
   icons: {

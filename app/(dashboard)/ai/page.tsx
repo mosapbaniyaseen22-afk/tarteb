@@ -72,7 +72,7 @@ export default function AiPage() {
 
       const token = data.session?.access_token;
       if (!token) {
-        throw new Error('سجّل الدخول لاستخدام لبيب AI');
+        throw new Error('سجّل الدخول لاستخدام ترتيب AI');
       }
 
       const response = await fetch('/api/ai/chat', {
@@ -91,7 +91,7 @@ export default function AiPage() {
       const contentType = response.headers.get('content-type') || '';
       if (!response.ok || !response.body || contentType.includes('application/json')) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error || 'تعذر الحصول على رد من لبيب');
+        throw new Error(payload.error || 'تعذر الحصول على رد من ترتيب');
       }
 
       const reader = response.body.getReader();
@@ -105,7 +105,7 @@ export default function AiPage() {
       }
       reply = reply.trim();
       if (!reply) {
-        throw new Error('رد فارغ من لبيب، حاول مرة أخرى');
+        throw new Error('رد فارغ من ترتيب، حاول مرة أخرى');
       }
 
       const aiMsg = await addAiMessage({
@@ -115,7 +115,7 @@ export default function AiPage() {
       });
       if (aiMsg) setMessages((prev) => [...prev, aiMsg]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'تعذر الحصول على رد من لبيب';
+      const message = error instanceof Error ? error.message : 'تعذر الحصول على رد من ترتيب';
       toast.error(message);
     } finally {
       setDraft('');
@@ -134,8 +134,8 @@ export default function AiPage() {
           <Brain className="h-6 w-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">لبيب AI</h1>
-          <p className="text-xs text-muted-foreground">مساعد سريع ومجاني للدراسة</p>
+          <h1 className="text-xl font-bold">ترتيب AI</h1>
+          <p className="text-xs text-muted-foreground">مجاني وشغال — أقوى النماذج المتاحة</p>
         </div>
       </div>
 
@@ -151,7 +151,7 @@ export default function AiPage() {
                 <Sparkles className="h-10 w-10 text-white" />
               </motion.div>
               <div>
-                <h2 className="text-xl font-bold">مرحباً! أنا لبيب</h2>
+                <h2 className="text-xl font-bold">مرحباً! أنا ترتيب</h2>
                 <p className="mt-2 text-sm text-muted-foreground">كيف أساعدك في دراستك اليوم؟</p>
               </div>
               <div className="grid w-full max-w-lg gap-2 sm:grid-cols-2">

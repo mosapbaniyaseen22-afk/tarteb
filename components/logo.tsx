@@ -49,7 +49,7 @@ export function Logo({ size = 40, className = '', style, ...props }: LogoProps) 
           />
         </svg>
       </div>
-      <span className="text-xl font-bold text-foreground">لبيب</span>
+      <span className="text-xl font-bold text-foreground">ترتيب</span>
     </div>
   );
 }

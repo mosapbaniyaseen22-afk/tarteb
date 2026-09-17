@@ -16,24 +16,27 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import {
   BookOpen, FileText, Download, ClipboardList, NotebookPen,
-  Bookmark, Plus, Trash2, BookMarked, ArrowRight, Play, FileDown, Link as LinkIcon, CircleHelp
+  Bookmark, Plus, Trash2, BookMarked, ArrowRight, Play, FileDown, Link as LinkIcon, CircleHelp, Lock
 } from 'lucide-react';
 import { ResourceViewer } from '@/components/resource-viewer';
+import { SubscriptionGate } from '@/components/subscription-gate';
 import { subjectProgressPercent } from '@/lib/user-stats';
 import type { Subject, Note } from '@/lib/supabase';
 import {
-  resourceFileHref,
+  resourceDownloadAnchorProps,
   resourceMatchesSubject,
   type AdminResource,
   type AdminResourceType,
 } from '@/lib/admin';
 import { useAdminResources } from '@/lib/use-admin-resources';
+import { useSubscription } from '@/lib/use-subscription';
 
 export default function SubjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user, userSubjects, profile } = useAuth();
   const { resources } = useAdminResources(profile?.stage);
+  const { active: subscribed } = useSubscription();
   const [subject, setSubject] = useState<Subject | null>(null);
   const [progress, setProgress] = useState(0);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -111,56 +114,83 @@ export default function SubjectPage() {
 
     return rows.map((item, index) => {
       const Icon = icon;
+      const download = resourceDownloadAnchorProps(item);
+      const openFallback = () => {
+        if (item.externalUrl) {
+          window.open(item.externalUrl, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        if (item.type === 'electronic_exam') {
+          setViewerItem(item);
+          return;
+        }
+        toast.error('الملف الأصلي غير جاهز للتحميل');
+      };
       return (
       <motion.div key={item.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}>
-        <Card
-          className="group flex cursor-pointer items-center gap-4 rounded-2xl border-0 glass-card p-4 shadow-soft"
-          onClick={() => setViewerItem(item)}
-        >
-          <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${colorClass}`}>
-            <Icon className="h-6 w-6" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold">{item.title}</h3>
-            <p className="text-sm text-muted-foreground">
-              {item.description || item.fileName || 'محتوى من الأدمن'}
-              {item.year ? ` • ${item.year}` : ''}
-              {item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
-            </p>
-          </div>
-          {resourceFileHref(item) && (
+        <Card className="relative z-0 overflow-hidden rounded-2xl border-0 glass-card p-4 shadow-soft">
+          {download ? (
             <a
-              href={resourceFileHref(item) ?? '#'}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl p-2 hover:bg-accent"
-              onClick={(event) => event.stopPropagation()}
+              {...download}
+              className="flex min-w-0 flex-col gap-3 text-inherit no-underline"
             >
-              <FileDown className="h-5 w-5" />
+              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${colorClass}`}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="break-words font-semibold leading-snug">{item.title}</h3>
+                <p className="mt-1 break-words text-sm text-muted-foreground">
+                  {item.description || item.fileName || 'محتوى من الأدمن'}
+                  {item.year ? ` • ${item.year}` : ''}
+                  {item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
+                </p>
+              </div>
+              <span className="inline-flex w-fit items-center gap-1 rounded-xl bg-primary/10 px-3 py-2 text-sm font-medium text-primary">
+                <FileDown className="h-4 w-4" />
+                تحميل
+              </span>
             </a>
-          )}
-          {item.externalUrl && (
-            <a
-              href={item.externalUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl p-2 hover:bg-accent"
-              onClick={(event) => event.stopPropagation()}
+          ) : (
+            <button
+              type="button"
+              className="flex min-w-0 w-full flex-col gap-3 text-right"
+              onClick={openFallback}
             >
-              <LinkIcon className="h-5 w-5" />
-            </a>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${colorClass}`}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="break-words font-semibold leading-snug">{item.title}</h3>
+                <p className="mt-1 break-words text-sm text-muted-foreground">
+                  {item.description || item.fileName || 'محتوى من الأدمن'}
+                  {item.year ? ` • ${item.year}` : ''}
+                  {item.questions.length > 0 ? ` • ${item.questions.length} سؤال` : ''}
+                </p>
+              </div>
+            </button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-xl"
-            onClick={(event) => {
-              event.stopPropagation();
-              void addBookmark(item.title, item.type);
-            }}
-          >
-            <Bookmark className="h-5 w-5" />
-          </Button>
+          <div className="mt-3 flex items-center justify-end gap-1">
+            {item.externalUrl && !download && (
+              <a
+                href={item.externalUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl p-2 hover:bg-accent"
+              >
+                <LinkIcon className="h-5 w-5" />
+              </a>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-xl"
+              onClick={() => {
+                void addBookmark(item.title, item.type);
+              }}
+            >
+              <Bookmark className="h-5 w-5" />
+            </Button>
+          </div>
         </Card>
       </motion.div>
       );
@@ -181,81 +211,109 @@ export default function SubjectPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/subjects')} className="rounded-xl">
+    <div className="mx-auto max-w-4xl">
+      <div className="relative z-10 space-y-4 bg-background pb-5">
+        <Button variant="ghost" onClick={() => router.push('/subjects')} className="h-11 rounded-xl px-2">
           <ArrowRight className="h-5 w-5" />
+          المواد
         </Button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              style={{ backgroundColor: `${subject.color}15`, color: subject.color }}
-            >
-              <BookMarked className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">{subject.name_ar}</h1>
-              <p className="text-sm text-muted-foreground">تقدمك في المادة</p>
-            </div>
+        <div className="space-y-3">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-2xl"
+            style={{ backgroundColor: `${subject.color}15`, color: subject.color }}
+          >
+            <BookMarked className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="break-words text-2xl font-bold leading-tight">{subject.name_ar}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">تقدمك في المادة</p>
           </div>
         </div>
+
+        <Card className="rounded-3xl border-0 glass-card p-5 shadow-soft sm:p-6">
+          <div className="mb-2 flex justify-between gap-3">
+            <span className="text-sm font-medium">التقدم الإجمالي</span>
+            <span className="text-sm font-bold gradient-text">{progress}%</span>
+          </div>
+          <Progress value={progress} className="h-3" />
+        </Card>
       </div>
 
-      {/* Progress */}
-      <Card className="rounded-3xl border-0 glass-card p-6 shadow-soft">
-        <div className="mb-2 flex justify-between">
-          <span className="text-sm font-medium">التقدم الإجمالي</span>
-          <span className="text-sm font-bold gradient-text">{progress}%</span>
+      <Tabs defaultValue="lessons" className="relative z-0">
+        <div className="relative z-10 -mx-4 overflow-x-auto bg-background px-4 pb-2">
+          <TabsList className="flex h-auto w-max min-w-full justify-start gap-1 rounded-2xl bg-accent/50 p-1">
+            <TabsTrigger value="lessons" className="h-11 shrink-0 rounded-xl px-3 text-sm">شرح</TabsTrigger>
+            <TabsTrigger value="summaries" className="h-11 shrink-0 gap-1 rounded-xl px-3 text-sm">
+              تلخيصات
+              {!subscribed && <Lock className="h-3.5 w-3.5" />}
+            </TabsTrigger>
+            <TabsTrigger value="dossiers" className="h-11 shrink-0 gap-1 rounded-xl px-3 text-sm">
+              دوسيات
+              {!subscribed && <Lock className="h-3.5 w-3.5" />}
+            </TabsTrigger>
+            <TabsTrigger value="exams" className="h-11 shrink-0 rounded-xl px-3 text-sm">امتحانات</TabsTrigger>
+            <TabsTrigger value="questions" className="h-11 shrink-0 gap-1 rounded-xl px-3 text-sm">
+              أسئلة
+              {!subscribed && <Lock className="h-3.5 w-3.5" />}
+            </TabsTrigger>
+            <TabsTrigger value="videos" className="h-11 shrink-0 rounded-xl px-3 text-sm">فيديوهات</TabsTrigger>
+            <TabsTrigger value="notes" className="h-11 shrink-0 rounded-xl px-3 text-sm">ملاحظات</TabsTrigger>
+            <TabsTrigger value="bookmarks" className="h-11 shrink-0 rounded-xl px-3 text-sm">محفوظات</TabsTrigger>
+          </TabsList>
         </div>
-        <Progress value={progress} className="h-3" />
-      </Card>
-
-      {/* Tabs */}
-      <Tabs defaultValue="lessons" className="space-y-4">
-        <TabsList className="flex w-full flex-wrap gap-1 rounded-2xl bg-accent/50 p-1">
-          <TabsTrigger value="lessons" className="rounded-xl">شرح</TabsTrigger>
-          <TabsTrigger value="summaries" className="rounded-xl">تلخيصات</TabsTrigger>
-          <TabsTrigger value="dossiers" className="rounded-xl">دوسيات</TabsTrigger>
-          <TabsTrigger value="exams" className="rounded-xl">امتحانات</TabsTrigger>
-          <TabsTrigger value="questions" className="rounded-xl">أسئلة</TabsTrigger>
-          <TabsTrigger value="videos" className="rounded-xl">فيديوهات</TabsTrigger>
-          <TabsTrigger value="notes" className="rounded-xl">ملاحظات</TabsTrigger>
-          <TabsTrigger value="bookmarks" className="rounded-xl">محفوظات</TabsTrigger>
-        </TabsList>
 
         {/* Lessons */}
-        <TabsContent value="lessons" className="space-y-3">
+        <TabsContent value="lessons" className="mt-6 space-y-3">
           {renderResources(['material'], BookOpen, 'لا يوجد شرح مرفوع بعد', 'bg-primary/10 text-primary')}
         </TabsContent>
 
         {/* Summaries */}
-        <TabsContent value="summaries" className="space-y-3">
-          {renderResources(['summary'], FileText, 'لا توجد ملخصات مرفوعة بعد', 'bg-secondary/10 text-secondary')}
+        <TabsContent value="summaries" className="mt-6 space-y-3">
+          <SubscriptionGate
+            title="التلخيصات بالاشتراك"
+            description="افتح تلخيصات المادة بعد الاشتراك بـ 3 دنانير لأول شهر عبر كليك."
+          >
+            {renderResources(['summary'], FileText, 'لا توجد ملخصات مرفوعة بعد', 'bg-secondary/10 text-secondary')}
+          </SubscriptionGate>
         </TabsContent>
 
         {/* Dossiers */}
-        <TabsContent value="dossiers" className="space-y-3">
-          {renderResources(['dossier'], Download, 'لا توجد دوسيات مرفوعة بعد', 'bg-warning/10 text-warning')}
+        <TabsContent value="dossiers" className="mt-6 space-y-3">
+          <SubscriptionGate
+            title="الدوسيات بالاشتراك"
+            description="افتح دوسيات المادة بعد الاشتراك بـ 3 دنانير لأول شهر عبر كليك."
+          >
+            {renderResources(['dossier'], Download, 'لا توجد دوسيات مرفوعة بعد', 'bg-warning/10 text-warning')}
+          </SubscriptionGate>
         </TabsContent>
 
         {/* Exams */}
-        <TabsContent value="exams" className="space-y-3">
-          {renderResources(['ministerial_exam', 'suggested_exam', 'electronic_exam'], ClipboardList, 'لا توجد امتحانات مرفوعة بعد', 'bg-destructive/10 text-destructive')}
+        <TabsContent value="exams" className="mt-6 space-y-3">
+          {renderResources(['ministerial_exam'], ClipboardList, 'لا توجد امتحانات وزارية مرفوعة بعد', 'bg-destructive/10 text-destructive')}
+          <SubscriptionGate
+            title="الامتحانات المقترحة بالاشتراك"
+            description="الوزاري مجاني في الأعلى. المقترحة تفتح بعد الاشتراك بـ 3 دنانير لأول شهر عبر كليك."
+          >
+            {renderResources(['suggested_exam', 'electronic_exam'], ClipboardList, 'لا توجد امتحانات مقترحة مرفوعة بعد', 'bg-destructive/10 text-destructive')}
+          </SubscriptionGate>
         </TabsContent>
 
-        <TabsContent value="questions" className="space-y-3">
-          {renderResources(['questions'], CircleHelp, 'لا توجد أسئلة مرفوعة بعد', 'bg-primary/10 text-primary')}
+        <TabsContent value="questions" className="mt-6 space-y-3">
+          <SubscriptionGate
+            title="أسئلة المادة بالاشتراك"
+            description="افتح بنك أسئلة المادة بعد الاشتراك بـ 3 دنانير لأول شهر عبر كليك."
+          >
+            {renderResources(['questions'], CircleHelp, 'لا توجد أسئلة مرفوعة بعد', 'bg-primary/10 text-primary')}
+          </SubscriptionGate>
         </TabsContent>
 
         {/* Videos */}
-        <TabsContent value="videos" className="space-y-3">
+        <TabsContent value="videos" className="mt-6 space-y-3">
           {renderResources(['video'], Play, 'لا توجد فيديوهات مرفوعة بعد', 'bg-secondary/10 text-secondary')}
         </TabsContent>
 
         {/* Notes */}
-        <TabsContent value="notes" className="space-y-4">
+        <TabsContent value="notes" className="mt-6 space-y-4">
           <Card className="rounded-2xl border-0 glass-card p-4 shadow-soft space-y-3">
             <div>
               <Label className="mb-2 block">عنوان الملاحظة</Label>
@@ -292,7 +350,7 @@ export default function SubjectPage() {
         </TabsContent>
 
         {/* Bookmarks */}
-        <TabsContent value="bookmarks" className="space-y-3">
+        <TabsContent value="bookmarks" className="mt-6 space-y-3">
           {bookmarks.length === 0 ? (
             <Card className="rounded-2xl border-0 glass-card p-8 text-center">
               <Bookmark className="mx-auto mb-3 h-10 w-10 text-muted-foreground/40" />

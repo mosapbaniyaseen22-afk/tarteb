@@ -3,12 +3,30 @@ import {
   resourceMatchesSubject,
   type AdminQuestion,
   type AdminResource,
+  type AdminResourceType,
 } from './admin';
 import { parseQuestions } from './parse-questions';
+import { practiceBankForSubject } from './practice-bank';
+import { buildPracticeQuestions } from './practice-build';
+
+export const PRACTICE_SOURCE_TYPES: AdminResourceType[] = [
+  'material',
+  'summary',
+  'dossier',
+  'questions',
+  'ministerial_exam',
+  'suggested_exam',
+  'electronic_exam',
+];
+
+export function isPracticeSourceType(type: AdminResourceType) {
+  return PRACTICE_SOURCE_TYPES.includes(type);
+}
 
 export const UNGROUPED_UNIT = 'بدون وحدة';
 export const UNGROUPED_LESSON = 'أسئلة عامة';
 export const MAX_LESSON_QUIZ = 40;
+export const NO_PRACTICE_SENTINEL = '__labib_no_mcq__';
 
 export type PracticeQuestion = AdminQuestion & {
   resourceId: string;
@@ -36,14 +54,21 @@ export function questionsForResource(resource: AdminResource): AdminQuestion[] {
   const cached = questionCache.get(resource);
   if (cached) return cached;
 
-  const stored = (resource.questions ?? []).map(normalizeAdminQuestion);
+  const stored = (resource.questions ?? [])
+    .map(normalizeAdminQuestion)
+    .filter((question) => question.prompt !== NO_PRACTICE_SENTINEL && isMcqQuestion(question));
   const extracted = resource.extractedText?.trim();
   let resolved = stored;
   if (extracted) {
-    const parsed = parseQuestions(extracted).map(normalizeAdminQuestion);
-    if (parsed.length > 0 && (hasStructure(parsed) || !hasStructure(stored) || parsed.length > stored.length)) {
-      resolved = parsed;
+    const parsed = parseQuestions(extracted).map(normalizeAdminQuestion).filter(isMcqQuestion);
+    const built = buildPracticeQuestions(extracted, resource.title, UNGROUPED_LESSON).map(normalizeAdminQuestion);
+    const next = parsed.length >= built.length ? parsed : built;
+    if (next.length > 0 && (hasStructure(next) || !hasStructure(stored) || next.length > stored.length)) {
+      resolved = next;
     }
+  }
+  if (resolved.length === 0 && isPracticeSourceType(resource.type) && resource.published !== false) {
+    resolved = practiceBankForSubject(resource.subjectName).map(normalizeAdminQuestion);
   }
   questionCache.set(resource, resolved);
   return resolved;
@@ -53,13 +78,82 @@ export function isMcqQuestion(question: AdminQuestion) {
   return question.options.length >= 2;
 }
 
-export function collectPracticeQuestions(resources: AdminResource[], subjectName: string | null) {
+function normalizePrompt(text: string) {
+  return text
+    .replace(/[أإآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[ًٌٍَُِّْ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function sourceUnitLesson(resource: AdminResource): { unit: string; lesson: string } {
+  const title = resource.title.trim() || 'محتوى منشور';
+  switch (resource.type) {
+    case 'ministerial_exam':
+      return {
+        unit: 'نمط وزاري',
+        lesson: resource.year ? `${title} • ${resource.year}` : title,
+      };
+    case 'suggested_exam':
+      return {
+        unit: 'أسئلة مقترحة',
+        lesson: resource.year ? `${title} • ${resource.year}` : title,
+      };
+    case 'electronic_exam':
+      return { unit: 'امتحانات إلكترونية', lesson: title };
+    case 'questions':
+      return { unit: title, lesson: UNGROUPED_LESSON };
+    case 'material':
+      return { unit: title, lesson: UNGROUPED_LESSON };
+    case 'summary':
+      return { unit: 'من الملخصات', lesson: title };
+    case 'dossier':
+      return { unit: 'من الدوسيات', lesson: title };
+    case 'video':
+      return { unit: UNGROUPED_UNIT, lesson: title };
+    default: {
+      const exhaustive: never = resource.type;
+      return exhaustive;
+    }
+  }
+}
+
+function withSourceGrouping(question: AdminQuestion, resource: AdminResource): AdminQuestion {
+  const fallback = sourceUnitLesson(resource);
+  return {
+    ...question,
+    unit: question.unit?.trim() || fallback.unit,
+    lesson: question.lesson?.trim() || fallback.lesson,
+  };
+}
+
+export function collectPracticeQuestions(
+  resources: AdminResource[],
+  subjectName: string | null,
+  allowedSubjects: string[] = [],
+) {
   const pool: PracticeQuestion[] = [];
+  const seen = new Set<string>();
+
   resources.forEach((resource) => {
+    if (resource.published === false) return;
+    if (!isPracticeSourceType(resource.type)) return;
     if (subjectName && !resourceMatchesSubject(resource, subjectName)) return;
+    if (!subjectName && allowedSubjects.length > 0) {
+      const matchesStudent = allowedSubjects.some((name) => resourceMatchesSubject(resource, name));
+      if (!matchesStudent) return;
+    }
+
     questionsForResource(resource).forEach((question) => {
+      const grouped = withSourceGrouping(question, resource);
+      const key = `${resource.subjectName}:${normalizePrompt(grouped.prompt).slice(0, 140)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
       pool.push({
-        ...question,
+        ...grouped,
         resourceId: resource.id,
         resourceTitle: resource.title,
         subjectName: resource.subjectName,
@@ -67,6 +161,15 @@ export function collectPracticeQuestions(resources: AdminResource[], subjectName
     });
   });
   return pool;
+}
+
+export function practiceSourceCount(resources: AdminResource[], subjectName: string | null) {
+  return resources.filter((resource) => {
+    if (resource.published === false) return false;
+    if (!isPracticeSourceType(resource.type)) return false;
+    if (subjectName && !resourceMatchesSubject(resource, subjectName)) return false;
+    return questionsForResource(resource).length > 0;
+  }).length;
 }
 
 function unitSortValue(name: string) {

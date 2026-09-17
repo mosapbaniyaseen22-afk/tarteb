@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { adminFileUrl, resourceFileHref, resourceTypeLabel, type AdminResource } from '@/lib/admin';
+import { resourceDownloadAnchorProps, resourceTypeLabel, type AdminResource } from '@/lib/admin';
 import { questionsForResource } from '@/lib/practice';
 
 type ResourceViewerProps = {
@@ -60,14 +60,18 @@ export function ResourceViewer({ item, open, onOpenChange }: ResourceViewerProps
             </DialogHeader>
 
             <div className="flex flex-wrap gap-2">
-              {resourceFileHref(item) && (
-                <Button variant="outline" className="rounded-xl" asChild>
-                  <a href={resourceFileHref(item) ?? adminFileUrl(item.id)} target="_blank" rel="noreferrer">
-                    <FileDown className="h-4 w-4" />
-                    الملف الأصلي
-                  </a>
-                </Button>
-              )}
+              {(() => {
+                const download = resourceDownloadAnchorProps(item);
+                if (!download) return null;
+                return (
+                  <Button className="rounded-xl gradient-primary" asChild>
+                    <a {...download}>
+                      <FileDown className="h-4 w-4" />
+                      تحميل الملف الأصلي
+                    </a>
+                  </Button>
+                );
+              })()}
               {item.externalUrl && (
                 <Button variant="outline" className="rounded-xl" asChild>
                   <a href={item.externalUrl} target="_blank" rel="noreferrer">
@@ -89,6 +93,7 @@ export function ResourceViewer({ item, open, onOpenChange }: ResourceViewerProps
               <TabsContent value="content">
                 {hasText ? (
                   <div className="whitespace-pre-wrap rounded-2xl bg-accent/40 p-4 text-sm leading-8">
+                    <p className="mb-3 text-xs text-muted-foreground">هذه معاينة نصية فقط. زر التحميل ينزّل ملف PDF الأصلي.</p>
                     {item.extractedText}
                   </div>
                 ) : (

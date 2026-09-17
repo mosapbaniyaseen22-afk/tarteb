@@ -7,6 +7,7 @@ import { BookOpen, Brain, Clock, CircleHelp, Trophy, Moon, TrendingUp } from 'lu
 import { Button } from '@/components/ui/button';
 import { isReturningStudent, useAuth } from '@/lib/auth-context';
 import { LabibLogo } from '@/components/labib-logo';
+import { InstagramLinks } from '@/components/instagram-links';
 
 function GoogleIcon() {
   return (
@@ -50,7 +51,7 @@ export default function LandingPage() {
 
   const features = [
     { icon: BookOpen, title: 'شرح المواد', desc: 'شروحات مفصلة لجميع مواد التوجيهي', color: '#2563EB' },
-    { icon: Brain, title: 'لبيب AI', desc: 'مساعد ذكي يجيب على أسئلتك ويشرح دروسك', color: '#14B8A6' },
+    { icon: Brain, title: 'ترتيب AI', desc: 'مساعد ذكي مجاني يجيب على أسئلتك ويشرح دروسك', color: '#14B8A6' },
     { icon: Clock, title: 'تنظيم الوقت', desc: 'جدول يومي ذكي يناسب وقتك وموادك', color: '#F59E0B' },
     { icon: CircleHelp, title: 'اختبر نفسك', desc: 'تدريب سريع على أسئلة موادك قبل الوزاري', color: '#22C55E' },
     { icon: Trophy, title: 'الامتحانات', desc: 'امتحانات سابقة لكل المواد والسنوات', color: '#8B5CF6' },
@@ -70,7 +71,8 @@ export default function LandingPage() {
       <nav className="relative z-10 flex flex-wrap items-center justify-between gap-3 px-4 py-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-12">
         <div className="flex items-center gap-2">
           <LabibLogo size="md" />
-          <span className="text-xl font-bold">لبيب</span>
+          <span className="text-xl font-bold">ترتيب</span>
+          <InstagramLinks variant="compact" />
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -104,7 +106,7 @@ export default function LandingPage() {
           className="text-3xl font-extrabold leading-tight sm:text-4xl md:text-7xl"
         >
           تفوّق في التوجيهي<br />
-          <span className="gradient-text">مع لبيب</span>
+          <span className="gradient-text">مع ترتيب</span>
         </motion.h1>
 
         <motion.p
@@ -207,7 +209,7 @@ export default function LandingPage() {
         >
           <TrendingUp className="mx-auto mb-4 h-12 w-12 text-primary" />
           <h2 className="mb-4 text-3xl font-bold md:text-4xl">ابدأ رحلتك نحو التفوق</h2>
-          <p className="mb-8 text-muted-foreground">انضم لآلاف الطلاب الذين يستخدمون لبيب لتحقيق أعلى علاماتهم في التوجيهي</p>
+          <p className="mb-8 text-muted-foreground">انضم لآلاف الطلاب الذين يستخدمون ترتيب لتحقيق أعلى علاماتهم في التوجيهي</p>
           <Button
             onClick={startWithGoogle}
             disabled={loading || signingIn}
@@ -228,8 +230,13 @@ export default function LandingPage() {
         </motion.div>
       </section>
 
-      <footer className="relative z-10 border-t border-border/40 py-8 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} لبيب — منصة طلاب التوجيهي في الأردن
+      <footer className="relative z-10 border-t border-border/40 px-4 py-8 md:px-6">
+        <div className="mb-3 flex items-center justify-center gap-2">
+          <InstagramLinks variant="compact" />
+        </div>
+        <p className="text-center text-sm text-muted-foreground">
+          © {new Date().getFullYear()} ترتيب — منصة طلاب التوجيهي في الأردن
+        </p>
       </footer>
     </div>
   );

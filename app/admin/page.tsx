@@ -12,6 +12,7 @@ import { LabibLogo } from '@/components/labib-logo';
 import { AdminActivationCodes } from '@/components/admin-activation-codes';
 import { AdminUsersSheet } from '@/components/admin/admin-users-sheet';
 import { AdminPublishHub } from '@/components/admin/admin-publish-hub';
+import { AdminPracticeSyncCard } from '@/components/admin/admin-practice-sync-card';
 import { ADMIN_EMAIL, loadAdminResources, type AdminResource, type AppSubscriber } from '@/lib/admin';
 import { getStageLabel, type TawjihiStage } from '@/lib/utils';
 
@@ -117,7 +118,7 @@ export default function AdminPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">دخول الأدمن</h1>
-              <p className="text-sm text-muted-foreground">لوحة إدارة محتوى لبيب</p>
+              <p className="text-sm text-muted-foreground">لوحة إدارة محتوى ترتيب</p>
             </div>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -162,7 +163,7 @@ export default function AdminPage() {
           <div className="flex min-w-0 items-center gap-2">
             <LabibLogo size="md" />
             <div className="min-w-0">
-              <div className="font-bold">لوحة أدمن لبيب</div>
+              <div className="font-bold">لوحة أدمن ترتيب</div>
               <div className="truncate text-xs text-muted-foreground">
                 {publishStage ? `نشر ${getStageLabel(publishStage)}` : 'اختر السنة ثم انشر المحتوى للطلاب'}
               </div>
@@ -188,6 +189,8 @@ export default function AdminPage() {
           />
         ) : (
           <>
+            <AdminPracticeSyncCard items={items} onRefresh={refreshItems} />
+
             <AdminActivationCodes />
 
             <div>

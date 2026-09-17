@@ -4,7 +4,7 @@ import type { CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bed, BookMarked, BookOpen, Building2, Check, Clock, Coffee, Dumbbell,
-  FlaskConical, Moon, Pencil, School, Sun, Trash2, UtensilsCrossed, Wand2,
+  FlaskConical, Moon, Pencil, School, Sun, Trash2, Users, UtensilsCrossed, Wand2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ScheduleEntry } from '@/lib/supabase';
@@ -20,6 +20,7 @@ const ACTIVITY_ICONS: Record<string, typeof Clock> = {
   school: School,
   sport: Dumbbell,
   meal: UtensilsCrossed,
+  friends: Users,
   custom: Wand2,
 };
 

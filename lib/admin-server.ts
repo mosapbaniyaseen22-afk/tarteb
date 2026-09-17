@@ -12,7 +12,18 @@ import {
   type ActivationCode,
   type UserSubscription,
 } from './activation';
-import { deleteCloudResource, listCloudResources, upsertCloudResource } from './admin-cloud';
+import {
+  activateCloudCode,
+  deleteCloudActivationCode,
+  deleteCloudResource,
+  getCloudResource,
+  getCloudUserSubscription,
+  listCloudActivationCodes,
+  listCloudResources,
+  uploadCloudFile,
+  upsertCloudActivationCode,
+  upsertCloudResource,
+} from './admin-cloud';
 
 const AUTH_COOKIE = 'labib_admin';
 const DEFAULT_USERNAME = 'admin';
@@ -222,16 +233,31 @@ export async function writeResources(items: AdminResource[]) {
   await ensureDataDir();
   const normalized = items.map((item) => normalizeAdminResource(item));
   await writeFile(resourcesFilePath(), JSON.stringify(normalized, null, 2), 'utf8');
-  await Promise.all(normalized.map((item) => upsertCloudResource(item)));
+}
+
+export async function findResource(id: string): Promise<AdminResource | null> {
+  const local = (await readLocalResources()).find((item) => item.id === id);
+  if (local) return local;
+  return getCloudResource(id);
+}
+
+export async function saveResource(item: AdminResource) {
+  const normalized = normalizeAdminResource(item);
+  try {
+    const local = await readLocalResources();
+    await writeResources([normalized, ...local.filter((row) => row.id !== normalized.id)]);
+  } catch (error) {
+    console.error(error);
+  }
+  await upsertCloudResource(normalized);
+  return normalized;
 }
 
 export async function deleteResource(id: string) {
-  const items = await readResources();
-  const current = items.find((item) => item.id === id);
-  const next = items.filter((item) => item.id !== id);
-  await ensureDataDir();
-  await writeFile(resourcesFilePath(), JSON.stringify(next, null, 2), 'utf8');
-  await deleteCloudResource(id, current?.filePath);
+  const current = await findResource(id);
+  const next = (await readLocalResources()).filter((item) => item.id !== id);
+  await writeResources(next);
+  await deleteCloudResource(id, current);
   await deleteUpload(id);
 }
 
@@ -242,6 +268,24 @@ export function uploadPath(id: string) {
 export async function saveUpload(id: string, bytes: Buffer) {
   await ensureDataDir();
   await writeFile(uploadPath(id), bytes);
+}
+
+export async function persistOriginalFile(input: {
+  id: string;
+  fileName: string;
+  mime: string;
+  bytes?: Buffer | null;
+  filePath?: string | null;
+  fileUrl?: string | null;
+}) {
+  if (input.filePath && input.fileUrl) {
+    return { filePath: input.filePath, fileUrl: input.fileUrl };
+  }
+  if (!input.bytes || input.bytes.length === 0) {
+    throw new Error('تعذر حفظ الملف الأصلي');
+  }
+  await saveUpload(input.id, input.bytes);
+  return uploadCloudFile(input.id, input.bytes, input.mime, input.fileName);
 }
 
 export async function deleteUpload(id: string) {
@@ -350,6 +394,12 @@ function normalizeCodeRecord(row: ActivationCode): ActivationCode {
 }
 
 export async function readActivationCodes(): Promise<ActivationCode[]> {
+  try {
+    const cloud = await listCloudActivationCodes();
+    if (cloud) return cloud.map(normalizeCodeRecord);
+  } catch (error) {
+    console.error(error);
+  }
   await ensureDataDir();
   try {
     const raw = await readFile(activationCodesFilePath(), 'utf8');
@@ -382,7 +432,15 @@ async function writeUserSubscriptions(items: UserSubscription[]) {
   await writeFile(subscriptionsFilePath(), JSON.stringify(items, null, 2), 'utf8');
 }
 
-export async function getUserSubscription(userId: string) {
+export async function getUserSubscription(userId: string, token?: string) {
+  if (token) {
+    try {
+      const cloud = await getCloudUserSubscription(token);
+      if (cloud) return cloud;
+    } catch (error) {
+      console.error(error);
+    }
+  }
   const subscriptions = await readUserSubscriptions();
   return subscriptions.find((row) => row.userId === userId) ?? null;
 }
@@ -415,6 +473,9 @@ export async function generateActivationCodes(input: { count: number; note?: str
   }
 
   await writeActivationCodes([...created, ...codes]);
+  await Promise.all(created.map((item) => upsertCloudActivationCode(item).catch((error) => {
+    console.error(error);
+  })));
   return created;
 }
 
@@ -431,6 +492,11 @@ export async function revokeActivationCode(id: string) {
     revokedAt: now,
   };
   await writeActivationCodes(codes.map((row) => (row.id === id ? next : row)));
+  try {
+    await upsertCloudActivationCode(next);
+  } catch (error) {
+    console.error(error);
+  }
 
   const subscriptions = await readUserSubscriptions();
   const updated = subscriptions.map((row) => {
@@ -449,6 +515,10 @@ export async function deleteActivationCode(id: string) {
     return { ok: false as const, error: 'يمكن حذف الأكواد غير المستخدمة فقط. ألغِ الكود بدل الحذف.' };
   }
   await writeActivationCodes(codes.filter((row) => row.id !== id));
+  const cloud = await deleteCloudActivationCode(id);
+  if (cloud && cloud.ok === false) {
+    return { ok: false as const, error: cloud.error };
+  }
   return { ok: true as const };
 }
 
@@ -457,9 +527,24 @@ export async function activateCodeForUser(input: {
   userId: string;
   name: string;
   email: string;
+  token?: string;
 }) {
   const raw = input.code.trim();
   if (!raw) return { ok: false as const, error: 'أدخل كود التفعيل' };
+
+  if (input.token) {
+    const cloud = await activateCloudCode(input.token, raw);
+    if (cloud) {
+      if (cloud.ok) {
+        const subscriptions = await readUserSubscriptions();
+        const nextSubs = subscriptions.some((row) => row.userId === input.userId)
+          ? subscriptions.map((row) => (row.userId === input.userId ? cloud.subscription : row))
+          : [cloud.subscription, ...subscriptions];
+        await writeUserSubscriptions(nextSubs).catch((error) => console.error(error));
+      }
+      return cloud;
+    }
+  }
 
   const codes = await readActivationCodes();
   const match = codes.find((row) => codesMatch(row.code, raw));
@@ -482,6 +567,11 @@ export async function activateCodeForUser(input: {
     expiresAt,
   };
   await writeActivationCodes(codes.map((row) => (row.id === match.id ? used : row)));
+  try {
+    await upsertCloudActivationCode(used);
+  } catch (error) {
+    console.error(error);
+  }
 
   const subscription: UserSubscription = {
     userId: input.userId,

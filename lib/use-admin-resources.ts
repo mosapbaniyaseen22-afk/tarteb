@@ -1,18 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { loadAdminResources, resourceMatchesStage, type AdminResource } from '@/lib/admin';
-import { normalizeTawjihiStage, type TawjihiStage } from '@/lib/utils';
+import { loadAdminResources, type AdminResource } from '@/lib/admin';
+import { type TawjihiStage } from '@/lib/utils';
 
-export function useAdminResources(stage?: TawjihiStage | string | null) {
+export function useAdminResources(_stage?: TawjihiStage | string | null) {
   const [resources, setResources] = useState<AdminResource[]>([]);
   const [loading, setLoading] = useState(true);
-  const resolvedStage = stage ? normalizeTawjihiStage(stage) : null;
 
   const refresh = useCallback(async () => {
     const items = await loadAdminResources();
-    setResources(resolvedStage ? items.filter((item) => resourceMatchesStage(item, resolvedStage)) : items);
-  }, [resolvedStage]);
+    setResources(items);
+  }, []);
 
   useEffect(() => {
     let active = true;

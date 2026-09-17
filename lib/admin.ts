@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { FIRST_YEAR_SUBJECTS, normalizeTawjihiStage, type TawjihiStage } from './utils';
+import { FIRST_YEAR_SUBJECTS, normalizeTawjihiStage, subjectNamesMatch, type TawjihiStage } from './utils';
 
 export type AdminResourceType =
   | 'material'
@@ -10,6 +10,9 @@ export type AdminResourceType =
   | 'electronic_exam'
   | 'questions'
   | 'video';
+
+export const MAX_ADMIN_FILE_BYTES = 100 * 1024 * 1024;
+export const MAX_ADMIN_FILE_LABEL = '100 ميغابايت';
 
 export const ADMIN_RESOURCE_TYPE_IDS: AdminResourceType[] = [
   'material',
@@ -186,14 +189,52 @@ export function resourceTypeLabel(type: AdminResourceType): string {
   }
 }
 
-export function resourceMatchesSubject(resource: AdminResource, subjectName: string): boolean {
-  if (resource.subjectName === 'الكل') return true;
-  return resource.subjectName === subjectName;
+export function isPaidAdminResourceType(type: AdminResourceType): boolean {
+  switch (type) {
+    case 'summary':
+    case 'dossier':
+    case 'questions':
+    case 'suggested_exam':
+    case 'electronic_exam':
+      return true;
+    case 'material':
+    case 'ministerial_exam':
+    case 'video':
+      return false;
+    default: {
+      const exhaustive: never = type;
+      return exhaustive;
+    }
+  }
 }
 
-export function resourceMatchesStage(resource: AdminResource, stage: TawjihiStage | null | undefined): boolean {
-  if (!stage) return true;
-  return resource.stage === stage;
+export function resourceMatchesSubject(resource: AdminResource, subjectName: string): boolean {
+  if (resource.subjectName === 'الكل' || !subjectName) return true;
+  if (subjectNamesMatch(resource.subjectName, subjectName)) return true;
+  const left = resource.subjectName.replace(/^ال/, '').replace(/\s+/g, '');
+  const right = subjectName.replace(/^ال/, '').replace(/\s+/g, '');
+  if (left.length < 3 || right.length < 3) return false;
+  return left.includes(right) || right.includes(left);
+}
+
+export function resourceMatchesStage(_resource: AdminResource, _stage?: TawjihiStage | null) {
+  return true;
+}
+
+export function originalFileExtension(fileName: string) {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.docx')) return '.docx';
+  if (lower.endsWith('.doc')) return '.doc';
+  if (lower.endsWith('.pdf')) return '.pdf';
+  return '.bin';
+}
+
+export function originalStoragePath(id: string, fileName: string) {
+  return `${id}/original${originalFileExtension(fileName)}`;
+}
+
+export function resourceHasDownload(resource: AdminResource) {
+  return Boolean(resource.fileUrl || resource.filePath);
 }
 
 export function subjectsForPublishStage(stage: TawjihiStage): string[] {
@@ -201,29 +242,61 @@ export function subjectsForPublishStage(stage: TawjihiStage): string[] {
   return ADMIN_SUBJECT_OPTIONS;
 }
 
+export function resourceDownloadName(resource: AdminResource) {
+  const name = resource.fileName?.trim();
+  if (name && /\.[a-z0-9]{2,8}$/i.test(name)) return name;
+  if (name) return `${name}.pdf`;
+  return `${resource.title || 'file'}.pdf`;
+}
+
+function withDownloadQuery(href: string, fileName: string) {
+  try {
+    const next = new URL(href);
+    next.searchParams.set('download', fileName);
+    return next.toString();
+  } catch {
+    const join = href.includes('?') ? '&' : '?';
+    return `${href}${join}download=${encodeURIComponent(fileName)}`;
+  }
+}
+
+export function publicOriginalFileUrl(filePath: string, fileName?: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '');
+  if (!url || !filePath) return null;
+  const href = `${url}/storage/v1/object/public/admin-content/${filePath.split('/').map(encodeURIComponent).join('/')}`;
+  return fileName ? withDownloadQuery(href, fileName) : href;
+}
+
 export function resourceFileHref(resource: AdminResource) {
-  if (resource.fileUrl) return resource.fileUrl;
-  if (resource.fileName) return adminFileUrl(resource.id);
-  return null;
+  const fileName = resourceDownloadName(resource);
+  if (resource.fileUrl) return withDownloadQuery(resource.fileUrl, fileName);
+  if (resource.filePath) {
+    const direct = publicOriginalFileUrl(resource.filePath, fileName);
+    if (direct) return direct;
+  }
+  if (!resourceHasDownload(resource)) return null;
+  return adminFileUrl(resource.id);
+}
+
+export function resourceDownloadAnchorProps(resource: AdminResource) {
+  const href = resourceFileHref(resource);
+  if (!href) return null;
+  return {
+    href,
+    download: resourceDownloadName(resource),
+    target: '_blank' as const,
+    rel: 'noopener noreferrer',
+  };
 }
 
 const RESOURCES_CACHE_KEY = 'labib-admin-resources';
 
-export async function loadAdminResources(): Promise<AdminResource[]> {
-  try {
-    const response = await fetch(`/api/admin/resources?t=${Date.now()}`, { cache: 'no-store' });
-    if (response.ok) {
-      const payload = (await response.json()) as { items?: AdminResource[] };
-      const items = (payload.items ?? []).map((item) => normalizeAdminResource(item));
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(RESOURCES_CACHE_KEY, JSON.stringify(items));
-      }
-      return items;
-    }
-  } catch (error) {
-    console.error(error);
-  }
+function writeResourcesCache(items: AdminResource[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(RESOURCES_CACHE_KEY, JSON.stringify(items));
+}
 
+function readResourcesCache(): AdminResource[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.localStorage.getItem(RESOURCES_CACHE_KEY);
@@ -231,6 +304,26 @@ export async function loadAdminResources(): Promise<AdminResource[]> {
   } catch {
     return [];
   }
+}
+
+export function forgetAdminResource(id: string) {
+  writeResourcesCache(readResourcesCache().filter((item) => item.id !== id));
+}
+
+export async function loadAdminResources(): Promise<AdminResource[]> {
+  try {
+    const response = await fetch(`/api/admin/resources?t=${Date.now()}`, { cache: 'no-store' });
+    if (response.ok) {
+      const payload = (await response.json()) as { items?: AdminResource[] };
+      const items = (payload.items ?? []).map((item) => normalizeAdminResource(item));
+      writeResourcesCache(items);
+      return items;
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  return readResourcesCache();
 }
 
 export function adminFileUrl(id: string) {

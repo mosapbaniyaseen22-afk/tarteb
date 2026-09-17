@@ -16,19 +16,20 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as { code?: string } | null;
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
   const name = String(meta.full_name || meta.name || user.email?.split('@')[0] || 'طالب');
+  const header = request.headers.get('authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   const result = await activateCodeForUser({
     code: String(body?.code ?? ''),
     userId: user.id,
     name,
     email: String(user.email || ''),
+    token: token || undefined,
   });
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  const header = request.headers.get('authorization') || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (token) {
     try {
       await upsertCloudSubscription(token, result.subscription);

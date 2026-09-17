@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   const header = request.headers.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   if (!token) {
-    return NextResponse.json({ error: 'سجّل الدخول لاستخدام لبيب AI' }, { status: 401 });
+    return NextResponse.json({ error: 'سجّل الدخول لاستخدام ترتيب AI' }, { status: 401 });
   }
 
   const { data, error } = await supabase.auth.getUser(token);

@@ -16,6 +16,7 @@ import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { LabibLogo } from '@/components/labib-logo';
 import { LabibFloatChat } from '@/components/labib-float-chat';
+import { InstagramLinks } from '@/components/instagram-links';
 import { pingSubscriberPresence } from '@/lib/subscriber-presence';
 
 const navItems = [
@@ -26,7 +27,7 @@ const navItems = [
   { href: '/scheduler', label: 'تنظيم الوقت', icon: Clock },
   { href: '/journal', label: 'مذكراتي', icon: NotebookPen },
   { href: '/quran', label: 'ورد القرآن', icon: Moon },
-  { href: '/ai', label: 'لبيب AI', icon: Brain },
+  { href: '/ai', label: 'ترتيب AI', icon: Brain },
   { href: '/statistics', label: 'الإحصائيات', icon: BarChart3 },
   { href: '/profile', label: 'الملف الشخصي', icon: User },
 ];
@@ -36,7 +37,7 @@ const mobileTabs = [
   { href: '/subjects', label: 'المواد', icon: BookOpen },
   { href: '/practice', label: 'اختبر', icon: CircleHelp },
   { href: '/scheduler', label: 'الجدول', icon: Clock },
-  { href: '/ai', label: 'لبيب', icon: Brain },
+  { href: '/ai', label: 'ترتيب', icon: Brain },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -122,10 +123,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="flex h-full flex-col glass border-l border-border/40">
           {/* Logo */}
           <div className="flex items-center justify-between p-6">
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <LabibLogo size="md" />
-              <span className="text-xl font-bold">لبيب</span>
-            </Link>
+            <div className="flex min-w-0 items-center gap-2">
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <LabibLogo size="md" />
+                <span className="text-xl font-bold">ترتيب</span>
+              </Link>
+              <InstagramLinks variant="compact" />
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -201,7 +205,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/40 bg-background/80 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-lg lg:hidden">
           <div className="flex min-w-0 items-center gap-2">
             <LabibLogo size="sm" />
-            <span className="font-bold">لبيب</span>
+            <span className="font-bold">ترتيب</span>
+            <InstagramLinks variant="compact" />
           </div>
           <Button
             variant="ghost"

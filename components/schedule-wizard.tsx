@@ -360,7 +360,7 @@ export function ScheduleWizard({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
-            نظّم وقتك مع لبيب
+            نظّم وقتك مع ترتيب
           </DialogTitle>
         </DialogHeader>
 
@@ -581,7 +581,7 @@ export function ScheduleWizard({
                   <div className="space-y-3">
                     <div>
                       <h3 className="font-semibold">مهامي</h3>
-                      <p className="text-xs text-muted-foreground">حددي المدة فقط — لبيب يوزّع الرياضة والدراسة وباقي المهام على وقت فراغك بعد النوابت.</p>
+                      <p className="text-xs text-muted-foreground">حددي المدة فقط — ترتيب يوزّع الرياضة والدراسة وباقي المهام على وقت فراغك بعد النوابت.</p>
                     </div>
 
                     <div className="space-y-2">
